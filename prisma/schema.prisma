@@ -1,0 +1,256 @@
+// ============================================================
+// NutriClinic SaaS - Database Schema
+// منصة إدارة عيادات التغذية المدعومة بالذكاء الاصطناعي
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== المستخدمين والمصادقة ====================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String
+  phone         String?
+  role          String   @default("doctor") // "doctor" | "admin"
+  isActive      Boolean  @default(false)    // تفعيل حساب الطبيب من الإدارة
+  avatar        String?
+  specialization String?
+  clinicName    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  subscription  Subscription?
+  patients      Patient[]
+  aiConversations AiConversation[]
+}
+
+// ==================== الاشتراكات والخطط ====================
+
+model SubscriptionPlan {
+  id          String   @id @default(cuid())
+  name        String   // "monthly" | "yearly"
+  nameAr      String   // "اشتراك شهري" | "اشتراك سنوي"
+  price       Float
+  currency    String   @default("EGP")
+  durationDays Int
+  features    String   // JSON string of features
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  planId        String
+  status        String   @default("pending") // "pending" | "active" | "expired" | "cancelled"
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan          SubscriptionPlan  @relation(fields: [planId], references: [id])
+}
+
+// ==================== المرضى ====================
+
+model Patient {
+  id              String   @id @default(cuid())
+  doctorId        String
+  name            String
+  email           String?
+  phone           String?
+  gender          String?  // "male" | "female"
+  dateOfBirth     DateTime?
+  age             Int?
+  height          Float?   // cm
+  weight          Float?   // kg
+  activityLevel   String?  // "sedentary" | "light" | "moderate" | "active" | "very_active"
+  goal            String?  // "lose_weight" | "gain_weight" | "maintain" | "build_muscle"
+  medicalNotes    String?  // ملاحظات طبية
+  inBodyData      String?  // JSON string of InBody measurements
+  caloriesTarget  Float?   // السعرات المستهدفة
+  proteinTarget   Float?   // بروتين مستهدف (g)
+  carbsTarget     Float?   // كربوهيدرات مستهدفة (g)
+  fatsTarget      Float?   // دهون مستهدفة (g)
+  waterTarget     Float?   // ماء مستهدف (L)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  doctor          User              @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  visits          Visit[]
+  nutritionPlans  NutritionPlan[]
+  exercisePlans   ExercisePlan[]
+}
+
+// ==================== الزيارات ====================
+
+model Visit {
+  id              String   @id @default(cuid())
+  patientId       String
+  weight          Float?
+  height          Float?
+  bodyFat         Float?   // نسبة الدهون
+  muscleMass      Float?   // الكتلة العضلية
+  waterPercentage Float?   // نسبة الماء
+  bmi             Float?
+  bmr             Float?   // معدل الأيض الأساسي
+  tdee            Float?   // إجمالي استهلاك الطاقة
+  notes           String?
+  visitDate       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ==================== خطط التغذية ====================
+
+model NutritionPlan {
+  id              String   @id @default(cuid())
+  patientId       String
+  doctorId        String
+  name            String
+  description     String?
+  calories        Float
+  protein         Float
+  carbs           Float
+  fats            Float
+  water           Float?
+  meals           String   // JSON: [{name, foods: [{name, amount, calories, protein, carbs, fats}]}]
+  weekNumber      Int?
+  isAdaptive      Boolean  @default(false)
+  adaptiveFromVisit String? // ID of the visit that triggered adaptation
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ==================== خطط التمارين الرياضية ====================
+
+model ExercisePlan {
+  id              String   @id @default(cuid())
+  patientId       String
+  doctorId        String
+  name            String
+  description     String?
+  schedule        String   // JSON: [{day, exercises: [{name, sets, reps, duration, rest}]}]
+  weekNumber      Int?
+  isAdaptive      Boolean  @default(false)
+  adaptiveFromVisit String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ==================== الذكاء الاصطناعي ====================
+
+model AiProvider {
+  id          String   @id @default(cuid())
+  name        String   // "openai" | "gemini" | "claude" | "custom"
+  displayName String
+  baseUrl     String?
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0) // ترتيب الأولوية (0 = أعلى أولوية)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apiKeys     AiApiKey[]
+  usageLogs   AiUsageLog[]
+}
+
+model AiApiKey {
+  id          String   @id @default(cuid())
+  providerId  String
+  apiKey      String   // مشفّر
+  model       String   // e.g. "gpt-4o", "gemini-pro", "claude-3-sonnet"
+  isActive    Boolean  @default(true)
+  quotaLimit  Int?     // حد الاستخدام الشهري
+  quotaUsed   Int      @default(0)
+  quotaResetAt DateTime? // تاريخ إعادة تعيين الحصة
+  lastError   String?
+  lastErrorAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  provider    AiProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  usageLogs   AiUsageLog[]
+}
+
+model AiUsageLog {
+  id          String   @id @default(cuid())
+  apiKeyId    String?
+  providerId  String
+  userId      String
+  requestType String   // "chat" | "nutrition_plan" | "exercise_plan" | "macro_calc"
+  tokensUsed  Int      @default(0)
+  isSuccess   Boolean
+  errorMessage String?
+  responseTime Int?    // milliseconds
+  createdAt   DateTime @default(now())
+
+  apiKey      AiApiKey?  @relation(fields: [apiKeyId], references: [id])
+  provider    AiProvider @relation(fields: [providerId], references: [id])
+}
+
+model AiConversation {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    AiMessage[]
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   // "user" | "assistant" | "system"
+  content        String
+  providerUsed   String?  // أي مزود AI تم استخدامه
+  tokensUsed     Int?
+  createdAt      DateTime @default(now())
+
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+// ==================== إدارة المحتوى (CMS) ====================
+
+model CmsContent {
+  id        String   @id @default(cuid())
+  key       String   @unique // e.g. "home_hero_title", "about_text"
+  value     String
+  valueAr   String?  // النسخة العربية
+  type      String   @default("text") // "text" | "html" | "image" | "json"
+  page      String?  // الصفحة التي يظهر فيها
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== إعدادات النظام ====================
+
+model SystemSettings {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  value             String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
