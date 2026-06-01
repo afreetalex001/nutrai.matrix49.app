@@ -1,0 +1,30 @@
+---
+# cPanel Deployment Configuration for NutriClinic SaaS
+# إعداد نشر cPanel لنظام نيوتري كلينيك
+#
+# This file configures cPanel's Git Version Control deployment
+# يتم استخدام هذا الملف لتكوين نشر Git Version Control في cPanel
+
+deployment:
+  tasks:
+    # Step 1: Copy repository files to application directory
+    - export DEPLOYPATH=/home/matrmlyq/nutriclinic.matrix49.app
+    - export REPOPATH=/home/matrmlyq/repositories/nutriclinic.matrix49.app
+    - /bin/cp -r $REPOPATH/* $DEPLOYPATH/
+    - /bin/cp -r $REPOPATH/.next $DEPLOYPATH/ 2>/dev/null || true
+    - /bin/cp -r $REPOPATH/public $DEPLOYPATH/
+    - /bin/cp $REPOPATH/server.js $DEPLOYPATH/
+    - /bin/cp $REPOPATH/package.json $DEPLOYPATH/
+
+    # Step 2: Install production dependencies
+    - cd $DEPLOYPATH && npm install --production=false 2>&1
+
+    # Step 3: Build Next.js application
+    - cd $DEPLOYPATH && npm run build 2>&1
+
+    # Step 4: Copy static and public files to standalone output
+    - /bin/cp -r $DEPLOYPATH/.next/static $DEPLOYPATH/.next/standalone/.next/ 2>/dev/null || true
+    - /bin/cp -r $DEPLOYPATH/public $DEPLOYPATH/.next/standalone/ 2>/dev/null || true
+
+    # Step 5: Restart the Node.js application
+    - touch $DEPLOYPATH/tmp/restart.txt 2>/dev/null || true
