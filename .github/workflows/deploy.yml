@@ -11,8 +11,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
 
     steps:
       - name: Checkout Code
@@ -81,61 +83,45 @@ jobs:
           cd deploy-package && tar -czf ../deploy.tar.gz app && cd ..
 
       - name: Upload Deploy Package
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: deploy-package
           path: deploy.tar.gz
 
-      - name: Deploy via SSH (Direct)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script_stop: true
-          command_timeout: 120s
-          script: |
-            echo "=== Starting deployment ==="
-            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
-            rm -rf app
-            mkdir -p app
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
 
-      - name: Transfer deploy package via SSH
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-package
+
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: Deploy via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USERNAME }}
+          SSH_PASS: ${{ secrets.SSH_PASSWORD }}
         run: |
-          # Split the tar file into chunks and transfer via SSH
-          split -b 5M deploy.tar.gz deploy-chunk-
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30"
 
-          for chunk in deploy-chunk-*; do
-            echo "Transferring $chunk..."
-            cat "$chunk" | ssh -o StrictHostKeyChecking=no \
-              -p ${{ secrets.SSH_PORT }} \
-              ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} \
-              "cat >> /home/${{ secrets.SSH_USERNAME }}/nutriclinic/deploy.tar.gz"
-          done
+          echo "=== Uploading deployment package ==="
+          sshpass -p "$SSH_PASS" scp $SSH_OPTS -P "$SSH_PORT" deploy.tar.gz "$SSH_USER@$SSH_HOST:/home/$SSH_USER/nutriclinic/"
 
-      - name: Extract and Restart
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script_stop: true
-          command_timeout: 120s
-          script: |
-            echo "=== Extracting deployment package ==="
-            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
-            rm -rf app
-            tar -xzf deploy.tar.gz
-            rm -f deploy.tar.gz deploy-chunk-*
-
-            # Set permissions
-            chmod +x app/start.sh 2>/dev/null || true
-
-            # Restart Node.js app via Passenger
-            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
-            mkdir -p tmp
-            touch tmp/restart.txt
-
-            echo "=== Deployment completed at $(date) ==="
+          echo "=== Extracting and restarting ==="
+          sshpass -p "$SSH_PASS" ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" << 'DEPLOY'
+          cd ~/nutriclinic
+          rm -rf app
+          tar -xzf deploy.tar.gz
+          rm -f deploy.tar.gz
+          chmod +x app/start.sh 2>/dev/null || true
+          mkdir -p tmp
+          touch tmp/restart.txt
+          echo "=== Deployment completed at $(date) ==="
+          DEPLOY
