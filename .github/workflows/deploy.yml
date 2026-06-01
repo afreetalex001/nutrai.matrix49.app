@@ -1,9 +1,3 @@
-# ============================================================
-# NutriClinic SaaS - GitHub Actions Deployment Workflow
-# النشر التلقائي على Namecheap عند كل Push لفرع main
-# Uses SSH to trigger server-side git pull and rebuild
-# ============================================================
-
 name: Deploy to Production
 
 on:
@@ -12,11 +6,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Deploy via SSH - Git Pull and Rebuild
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -26,34 +19,29 @@ jobs:
           script_stop: false
           command_timeout: 300s
           script: |
-            echo "=== Starting deployment ==="
+            echo "=== Starting NutriClinic deployment ==="
+            cd $HOME/nutriclinic
 
-            # Navigate to the app directory
-            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
-
-            # Initialize git if not already
-            if [ ! -d .git ]; then
-              echo "Initializing git repository..."
-              git clone https://github.com/afreetalex001/nutriclinic.matrix49.app.git .
-            else
+            # Pull latest code from GitHub
+            if [ -d .git ]; then
               echo "Pulling latest code..."
-              git pull origin main || git fetch origin main && git reset --hard origin/main
-            fi
-
-            # Install Node.js dependencies if needed
-            echo "Installing dependencies..."
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-
-            # Try bun first, then npm
-            if command -v bun &> /dev/null; then
-              bun install
-            elif command -v npm &> /dev/null; then
-              npm install
+              git fetch origin main
+              git reset --hard origin/main
             else
-              echo "Neither bun nor npm found, trying with node directly..."
-              npm install 2>/dev/null || true
+              echo "Cloning repository..."
+              git clone https://github.com/afreetalex001/nutriclinic.matrix49.app.git .
             fi
+
+            # Setup Node.js environment
+            source $HOME/nodeenv/nutriclinic/bin/activate 2>/dev/null || true
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" 2>/dev/null || true
+
+            echo "Node version: $(node -v 2>/dev/null || echo 'not found')"
+            echo "NPM version: $(npm -v 2>/dev/null || echo 'not found')"
+
+            # Install dependencies
+            npm install --production=false 2>&1 || true
 
             # Switch to MySQL schema
             cp -f prisma/schema.mysql.prisma prisma/schema.prisma 2>/dev/null || true
@@ -63,14 +51,14 @@ jobs:
 
             # Build the application
             echo "Building application..."
-            NODE_ENV=production npm run build 2>/dev/null || bun run build 2>/dev/null || true
+            NODE_ENV=production npm run build 2>&1
 
-            # Copy static and public files
+            # Copy static and public files to standalone
             cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
             cp -r public .next/standalone/ 2>/dev/null || true
 
-            # Create .env file
-            cat > .next/standalone/.env << 'ENVEOF'
+            # Create .env file for the standalone build
+            cat > .next/standalone/.env << 'EOF'
           DATABASE_URL=${{ secrets.DATABASE_URL }}
           MYSQL_HOST=${{ secrets.MYSQL_HOST }}
           MYSQL_PORT=${{ secrets.MYSQL_PORT }}
@@ -81,15 +69,13 @@ jobs:
           NEXT_PUBLIC_APP_URL=${{ secrets.APP_URL }}
           WHATSAPP_NUMBER=${{ secrets.WHATSAPP_NUMBER }}
           NODE_ENV=production
-          ENVEOF
+          EOF
 
             # Update the app directory for Passenger
             rm -rf app 2>/dev/null || true
             cp -r .next/standalone app 2>/dev/null || true
-            cp -r .next/static app/.next/ 2>/dev/null || true
-            cp -r public app/ 2>/dev/null || true
 
-            # Restart Passenger
+            # Restart Passenger (Node.js app)
             mkdir -p tmp
             touch tmp/restart.txt
 
