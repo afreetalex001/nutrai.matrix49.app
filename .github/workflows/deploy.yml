@@ -55,7 +55,7 @@ jobs:
           cp package.json deploy-package/app/
 
           # Create .env
-          cat > deploy-package/app/.env << EOF
+          cat > deploy-package/app/.env << 'ENVEOF'
           DATABASE_URL=${{ secrets.DATABASE_URL }}
           MYSQL_HOST=${{ secrets.MYSQL_HOST }}
           MYSQL_PORT=${{ secrets.MYSQL_PORT }}
@@ -66,7 +66,7 @@ jobs:
           NEXT_PUBLIC_APP_URL=${{ secrets.APP_URL }}
           WHATSAPP_NUMBER=${{ secrets.WHATSAPP_NUMBER }}
           NODE_ENV=production
-          EOF
+          ENVEOF
 
           # Create startup script
           cat > deploy-package/app/start.sh << 'STARTUP'
@@ -74,7 +74,6 @@ jobs:
           cd "$(dirname "$0")"
           export NODE_ENV=production
           export PORT=3000
-          npx prisma db push --schema=prisma/schema.prisma --skip-generate 2>/dev/null
           node server.js
           STARTUP
           chmod +x deploy-package/app/start.sh
@@ -87,38 +86,56 @@ jobs:
           name: deploy-package
           path: deploy.tar.gz
 
-      - name: Deploy via SSH
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          source: "deploy.tar.gz"
-          target: "/home/${{ secrets.SSH_USERNAME }}/nutriclinic"
-
-      - name: Extract and Start App
+      - name: Deploy via SSH (Direct)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
+          script_stop: true
+          command_timeout: 120s
           script: |
+            echo "=== Starting deployment ==="
+            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
+            rm -rf app
+            mkdir -p app
+
+      - name: Transfer deploy package via SSH
+        run: |
+          # Split the tar file into chunks and transfer via SSH
+          split -b 5M deploy.tar.gz deploy-chunk-
+
+          for chunk in deploy-chunk-*; do
+            echo "Transferring $chunk..."
+            cat "$chunk" | ssh -o StrictHostKeyChecking=no \
+              -p ${{ secrets.SSH_PORT }} \
+              ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} \
+              "cat >> /home/${{ secrets.SSH_USERNAME }}/nutriclinic/deploy.tar.gz"
+          done
+
+      - name: Extract and Restart
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script_stop: true
+          command_timeout: 120s
+          script: |
+            echo "=== Extracting deployment package ==="
             cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
             rm -rf app
             tar -xzf deploy.tar.gz
-            rm deploy.tar.gz
+            rm -f deploy.tar.gz deploy-chunk-*
 
-            # Run Prisma migration
-            cd app
-            export NODE_ENV=production
-            npx prisma db push --schema=prisma/schema.prisma --skip-generate 2>&1 || true
+            # Set permissions
+            chmod +x app/start.sh 2>/dev/null || true
 
-            # Seed database (first time only)
-            if [ ! -f /home/${{ secrets.SSH_USERNAME }}/nutriclinic/.seeded ]; then
-              echo "First deployment - seeding database..."
-              touch /home/${{ secrets.SSH_USERNAME }}/nutriclinic/.seeded
-            fi
+            # Restart Node.js app via Passenger
+            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
+            mkdir -p tmp
+            touch tmp/restart.txt
 
-            echo "Deployment completed at $(date)"
+            echo "=== Deployment completed at $(date) ==="
