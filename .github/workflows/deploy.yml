@@ -11,11 +11,22 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          DB_URL: ${{ secrets.DATABASE_URL }}
+          DB_HOST: ${{ secrets.MYSQL_HOST }}
+          DB_PORT: ${{ secrets.MYSQL_PORT }}
+          DB_USER: ${{ secrets.MYSQL_USER }}
+          DB_PASS: ${{ secrets.MYSQL_PASSWORD }}
+          DB_NAME: ${{ secrets.MYSQL_DATABASE }}
+          JWT_KEY: ${{ secrets.JWT_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+          WA_NUM: ${{ secrets.WHATSAPP_NUMBER }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
+          envs: DB_URL,DB_HOST,DB_PORT,DB_USER,DB_PASS,DB_NAME,JWT_KEY,APP_URL,WA_NUM
           script_stop: false
           command_timeout: 300s
           script: |
@@ -38,7 +49,6 @@ jobs:
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" 2>/dev/null || true
 
             echo "Node version: $(node -v 2>/dev/null || echo 'not found')"
-            echo "NPM version: $(npm -v 2>/dev/null || echo 'not found')"
 
             # Install dependencies
             npm install --production=false 2>&1 || true
@@ -58,18 +68,16 @@ jobs:
             cp -r public .next/standalone/ 2>/dev/null || true
 
             # Create .env file for the standalone build
-            cat > .next/standalone/.env << 'EOF'
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-          MYSQL_HOST=${{ secrets.MYSQL_HOST }}
-          MYSQL_PORT=${{ secrets.MYSQL_PORT }}
-          MYSQL_USER=${{ secrets.MYSQL_USER }}
-          MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
-          MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          NEXT_PUBLIC_APP_URL=${{ secrets.APP_URL }}
-          WHATSAPP_NUMBER=${{ secrets.WHATSAPP_NUMBER }}
-          NODE_ENV=production
-          EOF
+            echo "DATABASE_URL=$DB_URL" > .next/standalone/.env
+            echo "MYSQL_HOST=$DB_HOST" >> .next/standalone/.env
+            echo "MYSQL_PORT=$DB_PORT" >> .next/standalone/.env
+            echo "MYSQL_USER=$DB_USER" >> .next/standalone/.env
+            echo "MYSQL_PASSWORD=$DB_PASS" >> .next/standalone/.env
+            echo "MYSQL_DATABASE=$DB_NAME" >> .next/standalone/.env
+            echo "JWT_SECRET=$JWT_KEY" >> .next/standalone/.env
+            echo "NEXT_PUBLIC_APP_URL=$APP_URL" >> .next/standalone/.env
+            echo "WHATSAPP_NUMBER=$WA_NUM" >> .next/standalone/.env
+            echo "NODE_ENV=production" >> .next/standalone/.env
 
             # Update the app directory for Passenger
             rm -rf app 2>/dev/null || true
