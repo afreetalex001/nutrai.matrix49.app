@@ -1,0 +1,124 @@
+# ============================================================
+# NutriClinic SaaS - GitHub Actions Deployment Workflow
+# النشر التلقائي على Namecheap عند كل Push لفرع main
+# ============================================================
+
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Switch to MySQL Schema
+        run: cp prisma/schema.mysql.prisma prisma/schema.prisma
+
+      - name: Generate Prisma Client
+        run: bun run db:generate
+
+      - name: Build Next.js
+        run: bun run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.APP_URL }}
+
+      - name: Create Deployment Package
+        run: |
+          mkdir -p deploy-package
+          cp -r .next/standalone deploy-package/app
+          cp -r .next/static deploy-package/app/.next/static
+          cp -r public deploy-package/app/public
+          cp -r prisma deploy-package/app/prisma
+          cp prisma/schema.mysql.prisma deploy-package/app/prisma/schema.prisma
+          cp package.json deploy-package/app/
+
+          # Create .env
+          cat > deploy-package/app/.env << EOF
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          MYSQL_HOST=${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT=${{ secrets.MYSQL_PORT }}
+          MYSQL_USER=${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          NEXT_PUBLIC_APP_URL=${{ secrets.APP_URL }}
+          WHATSAPP_NUMBER=${{ secrets.WHATSAPP_NUMBER }}
+          NODE_ENV=production
+          EOF
+
+          # Create startup script
+          cat > deploy-package/app/start.sh << 'STARTUP'
+          #!/bin/bash
+          cd "$(dirname "$0")"
+          export NODE_ENV=production
+          export PORT=3000
+          npx prisma db push --schema=prisma/schema.prisma --skip-generate 2>/dev/null
+          node server.js
+          STARTUP
+          chmod +x deploy-package/app/start.sh
+
+          cd deploy-package && tar -czf ../deploy.tar.gz app && cd ..
+
+      - name: Upload Deploy Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-package
+          path: deploy.tar.gz
+
+      - name: Deploy via SSH
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: "deploy.tar.gz"
+          target: "/home/${{ secrets.SSH_USERNAME }}/nutriclinic"
+
+      - name: Extract and Start App
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
+            rm -rf app
+            tar -xzf deploy.tar.gz
+            rm deploy.tar.gz
+
+            # Run Prisma migration
+            cd app
+            export NODE_ENV=production
+            npx prisma db push --schema=prisma/schema.prisma --skip-generate 2>&1 || true
+
+            # Seed database (first time only)
+            if [ ! -f /home/${{ secrets.SSH_USERNAME }}/nutriclinic/.seeded ]; then
+              echo "First deployment - seeding database..."
+              touch /home/${{ secrets.SSH_USERNAME }}/nutriclinic/.seeded
+            fi
+
+            echo "Deployment completed at $(date)"
