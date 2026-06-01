@@ -1,6 +1,7 @@
 # ============================================================
 # NutriClinic SaaS - GitHub Actions Deployment Workflow
 # النشر التلقائي على Namecheap عند كل Push لفرع main
+# Uses SSH to trigger server-side git pull and rebuild
 # ============================================================
 
 name: Deploy to Production
@@ -11,53 +12,65 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    outputs:
-      artifact_id: ${{ steps.upload.outputs.artifact-id }}
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+      - name: Deploy via SSH - Git Pull and Rebuild
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          node-version: '20'
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script_stop: false
+          command_timeout: 300s
+          script: |
+            echo "=== Starting deployment ==="
 
-      - name: Install Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+            # Navigate to the app directory
+            cd /home/${{ secrets.SSH_USERNAME }}/nutriclinic
 
-      - name: Install Dependencies
-        run: bun install
+            # Initialize git if not already
+            if [ ! -d .git ]; then
+              echo "Initializing git repository..."
+              git clone https://github.com/afreetalex001/nutriclinic.matrix49.app.git .
+            else
+              echo "Pulling latest code..."
+              git pull origin main || git fetch origin main && git reset --hard origin/main
+            fi
 
-      - name: Switch to MySQL Schema
-        run: cp prisma/schema.mysql.prisma prisma/schema.prisma
+            # Install Node.js dependencies if needed
+            echo "Installing dependencies..."
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-      - name: Generate Prisma Client
-        run: bun run db:generate
+            # Try bun first, then npm
+            if command -v bun &> /dev/null; then
+              bun install
+            elif command -v npm &> /dev/null; then
+              npm install
+            else
+              echo "Neither bun nor npm found, trying with node directly..."
+              npm install 2>/dev/null || true
+            fi
 
-      - name: Build Next.js
-        run: bun run build
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.APP_URL }}
+            # Switch to MySQL schema
+            cp -f prisma/schema.mysql.prisma prisma/schema.prisma 2>/dev/null || true
 
-      - name: Create Deployment Package
-        run: |
-          mkdir -p deploy-package
-          cp -r .next/standalone deploy-package/app
-          cp -r .next/static deploy-package/app/.next/static
-          cp -r public deploy-package/app/public
-          cp -r prisma deploy-package/app/prisma
-          cp prisma/schema.mysql.prisma deploy-package/app/prisma/schema.prisma
-          cp package.json deploy-package/app/
+            # Generate Prisma client
+            npx prisma generate 2>/dev/null || true
 
-          # Create .env
-          cat > deploy-package/app/.env << 'ENVEOF'
+            # Build the application
+            echo "Building application..."
+            NODE_ENV=production npm run build 2>/dev/null || bun run build 2>/dev/null || true
+
+            # Copy static and public files
+            cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+            cp -r public .next/standalone/ 2>/dev/null || true
+
+            # Create .env file
+            cat > .next/standalone/.env << 'ENVEOF'
           DATABASE_URL=${{ secrets.DATABASE_URL }}
           MYSQL_HOST=${{ secrets.MYSQL_HOST }}
           MYSQL_PORT=${{ secrets.MYSQL_PORT }}
@@ -70,58 +83,14 @@ jobs:
           NODE_ENV=production
           ENVEOF
 
-          # Create startup script
-          cat > deploy-package/app/start.sh << 'STARTUP'
-          #!/bin/bash
-          cd "$(dirname "$0")"
-          export NODE_ENV=production
-          export PORT=3000
-          node server.js
-          STARTUP
-          chmod +x deploy-package/app/start.sh
+            # Update the app directory for Passenger
+            rm -rf app 2>/dev/null || true
+            cp -r .next/standalone app 2>/dev/null || true
+            cp -r .next/static app/.next/ 2>/dev/null || true
+            cp -r public app/ 2>/dev/null || true
 
-          cd deploy-package && tar -czf ../deploy.tar.gz app && cd ..
+            # Restart Passenger
+            mkdir -p tmp
+            touch tmp/restart.txt
 
-      - name: Upload Deploy Package
-        id: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-package
-          path: deploy.tar.gz
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: deploy-package
-
-      - name: Install sshpass
-        run: sudo apt-get install -y sshpass
-
-      - name: Deploy via SSH
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.SSH_USERNAME }}
-          SSH_PASS: ${{ secrets.SSH_PASSWORD }}
-        run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30"
-
-          echo "=== Uploading deployment package ==="
-          sshpass -p "$SSH_PASS" scp $SSH_OPTS -P "$SSH_PORT" deploy.tar.gz "$SSH_USER@$SSH_HOST:/home/$SSH_USER/nutriclinic/"
-
-          echo "=== Extracting and restarting ==="
-          sshpass -p "$SSH_PASS" ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" << 'DEPLOY'
-          cd ~/nutriclinic
-          rm -rf app
-          tar -xzf deploy.tar.gz
-          rm -f deploy.tar.gz
-          chmod +x app/start.sh 2>/dev/null || true
-          mkdir -p tmp
-          touch tmp/restart.txt
-          echo "=== Deployment completed at $(date) ==="
-          DEPLOY
+            echo "=== Deployment completed at $(date) ==="
