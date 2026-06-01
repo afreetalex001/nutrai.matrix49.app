@@ -76,3 +76,24 @@ Stage Summary:
 - All pages rendering correctly (200 status)
 - API endpoints tested and working
 - Demo accounts: admin@nutriclinic.com/Admin@2024 and doctor@demo.com/Doctor@2024
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Create Node.js App setup for cPanel and fix landing page routing
+
+Work Log:
+- Created server.js entry point for cPanel Node.js App with fallback HTTP server
+- Created .cpanel.yml for cPanel Git Version Control deployment
+- Created src/middleware.ts to allow unauthenticated access to /, /login, /register
+- Created cpanel-setup.sh for initial server setup from cPanel Terminal
+- Created create-nodejs-app.sh for creating Node.js App via cPanel UAPI
+- Pushed all changes to GitHub (3 commits)
+- Attempted cPanel API access but couldn't authenticate without cPanel password
+
+Stage Summary:
+- All necessary files for Node.js App setup are in GitHub repo
+- server.js works with both Passenger (cPanel) and standalone modes
+- middleware.ts ensures landing page (/) is accessible without authentication
+- User needs to create the Node.js App in cPanel manually or via Terminal script
+- Files pushed: server.js, .cpanel.yml, src/middleware.ts, cpanel-setup.sh, create-nodejs-app.sh
