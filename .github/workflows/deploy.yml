@@ -9,9 +9,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Install SSH tools
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Deploy via native SSH
         env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USERNAME }}
+          SSH_PASS: ${{ secrets.SSH_PASSWORD }}
           DB_URL: ${{ secrets.DATABASE_URL }}
           DB_HOST: ${{ secrets.MYSQL_HOST }}
           DB_PORT: ${{ secrets.MYSQL_PORT }}
@@ -21,70 +27,67 @@ jobs:
           JWT_KEY: ${{ secrets.JWT_SECRET }}
           APP_URL: ${{ secrets.APP_URL }}
           WA_NUM: ${{ secrets.WHATSAPP_NUMBER }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          envs: DB_URL,DB_HOST,DB_PORT,DB_USER,DB_PASS,DB_NAME,JWT_KEY,APP_URL,WA_NUM
-          script_stop: false
-          command_timeout: 300s
-          script: |
-            echo "=== Starting NutriClinic deployment ==="
-            cd $HOME/nutriclinic
+        run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
 
-            # Pull latest code from GitHub
-            if [ -d .git ]; then
-              echo "Pulling latest code..."
-              git fetch origin main
-              git reset --hard origin/main
-            else
-              echo "Cloning repository..."
-              git clone https://github.com/afreetalex001/nutriclinic.matrix49.app.git .
-            fi
+          echo "=== Connecting to server ==="
+          sshpass -p "$SSH_PASS" ssh $SSH_OPTS -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" /bin/bash << 'REMOTE_SCRIPT'
+          echo "=== Starting NutriClinic deployment ==="
+          cd $HOME/nutriclinic
 
-            # Setup Node.js environment
-            source $HOME/nodeenv/nutriclinic/bin/activate 2>/dev/null || true
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" 2>/dev/null || true
+          # Pull latest code from GitHub
+          if [ -d .git ]; then
+            echo "Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+          else
+            echo "Cloning repository..."
+            git clone https://github.com/afreetalex001/nutriclinic.matrix49.app.git .
+          fi
 
-            echo "Node version: $(node -v 2>/dev/null || echo 'not found')"
+          # Setup Node.js environment
+          source $HOME/nodeenv/nutriclinic/bin/activate 2>/dev/null || true
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" 2>/dev/null || true
 
-            # Install dependencies
-            npm install --production=false 2>&1 || true
+          echo "Node version: $(node -v 2>/dev/null || echo 'not found')"
 
-            # Switch to MySQL schema
-            cp -f prisma/schema.mysql.prisma prisma/schema.prisma 2>/dev/null || true
+          # Install dependencies
+          npm install --production=false 2>&1 || true
 
-            # Generate Prisma client
-            npx prisma generate 2>/dev/null || true
+          # Switch to MySQL schema
+          cp -f prisma/schema.mysql.prisma prisma/schema.prisma 2>/dev/null || true
 
-            # Build the application
-            echo "Building application..."
-            NODE_ENV=production npm run build 2>&1
+          # Generate Prisma client
+          npx prisma generate 2>/dev/null || true
 
-            # Copy static and public files to standalone
-            cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
-            cp -r public .next/standalone/ 2>/dev/null || true
+          # Build the application
+          echo "Building application..."
+          NODE_ENV=production npm run build 2>&1
 
-            # Create .env file for the standalone build
-            echo "DATABASE_URL=$DB_URL" > .next/standalone/.env
-            echo "MYSQL_HOST=$DB_HOST" >> .next/standalone/.env
-            echo "MYSQL_PORT=$DB_PORT" >> .next/standalone/.env
-            echo "MYSQL_USER=$DB_USER" >> .next/standalone/.env
-            echo "MYSQL_PASSWORD=$DB_PASS" >> .next/standalone/.env
-            echo "MYSQL_DATABASE=$DB_NAME" >> .next/standalone/.env
-            echo "JWT_SECRET=$JWT_KEY" >> .next/standalone/.env
-            echo "NEXT_PUBLIC_APP_URL=$APP_URL" >> .next/standalone/.env
-            echo "WHATSAPP_NUMBER=$WA_NUM" >> .next/standalone/.env
-            echo "NODE_ENV=production" >> .next/standalone/.env
+          # Copy static and public files to standalone
+          cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
+          cp -r public .next/standalone/ 2>/dev/null || true
 
-            # Update the app directory for Passenger
-            rm -rf app 2>/dev/null || true
-            cp -r .next/standalone app 2>/dev/null || true
+          # Create .env file
+          echo "DATABASE_URL=$DB_URL" > .next/standalone/.env
+          echo "MYSQL_HOST=$DB_HOST" >> .next/standalone/.env
+          echo "MYSQL_PORT=$DB_PORT" >> .next/standalone/.env
+          echo "MYSQL_USER=$DB_USER" >> .next/standalone/.env
+          echo "MYSQL_PASSWORD=$DB_PASS" >> .next/standalone/.env
+          echo "MYSQL_DATABASE=$DB_NAME" >> .next/standalone/.env
+          echo "JWT_SECRET=$JWT_KEY" >> .next/standalone/.env
+          echo "NEXT_PUBLIC_APP_URL=$APP_URL" >> .next/standalone/.env
+          echo "WHATSAPP_NUMBER=$WA_NUM" >> .next/standalone/.env
+          echo "NODE_ENV=production" >> .next/standalone/.env
 
-            # Restart Passenger (Node.js app)
-            mkdir -p tmp
-            touch tmp/restart.txt
+          # Update the app directory for Passenger
+          rm -rf app 2>/dev/null || true
+          cp -r .next/standalone app 2>/dev/null || true
 
-            echo "=== Deployment completed at $(date) ==="
+          # Restart Passenger
+          mkdir -p tmp
+          touch tmp/restart.txt
+
+          echo "=== Deployment completed at $(date) ==="
+          REMOTE_SCRIPT
