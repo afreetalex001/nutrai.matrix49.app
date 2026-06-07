@@ -178,6 +178,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     activityLevel: '',
     goal: '',
     medicalNotes: '',
+    bodyFatPercentage: '',
+    muscleMass: '',
+    waterPercentage: '',
   });
   const [editSaving, setEditSaving] = useState(false);
 
@@ -230,6 +233,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   // ===== Edit Patient =====
   const openEditDialog = useCallback(() => {
     if (!patient) return;
+    const inBodyParsed = patient.inBodyData ? (() => { try { return JSON.parse(patient.inBodyData); } catch { return null; } })() : null;
     setEditForm({
       name: patient.name || '',
       email: patient.email || '',
@@ -242,6 +246,9 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       activityLevel: patient.activityLevel || '',
       goal: patient.goal || '',
       medicalNotes: patient.medicalNotes || '',
+      bodyFatPercentage: inBodyParsed?.bodyFat ? String(inBodyParsed.bodyFat) : '',
+      muscleMass: inBodyParsed?.muscleMass ? String(inBodyParsed.muscleMass) : '',
+      waterPercentage: inBodyParsed?.waterPercentage ? String(inBodyParsed.waterPercentage) : '',
     });
     setEditDialogOpen(true);
   }, [patient]);
@@ -262,6 +269,15 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       if (editForm.activityLevel) body.activityLevel = editForm.activityLevel;
       if (editForm.goal) body.goal = editForm.goal;
       if (editForm.medicalNotes !== undefined) body.medicalNotes = editForm.medicalNotes.trim() || null;
+
+      // InBody data
+      if (editForm.bodyFatPercentage || editForm.muscleMass || editForm.waterPercentage) {
+        body.inBodyData = {
+          bodyFat: editForm.bodyFatPercentage ? parseFloat(editForm.bodyFatPercentage) : null,
+          muscleMass: editForm.muscleMass ? parseFloat(editForm.muscleMass) : null,
+          waterPercentage: editForm.waterPercentage ? parseFloat(editForm.waterPercentage) : null,
+        };
+      }
 
       const res = await fetch(`/api/patients/${id}`, {
         method: 'PUT',
@@ -732,83 +748,138 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 <CardTitle className="text-sm font-semibold">معلومات المريض</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                {patient.email && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">البريد</span>
-                    <span dir="ltr">{patient.email}</span>
-                  </div>
+                {/* Personal Info Grid */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {patient.gender && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">الجنس</p>
+                      <p className="font-semibold">{genderLabels[patient.gender] || patient.gender}</p>
+                    </div>
+                  )}
+                  {patient.age && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">العمر</p>
+                      <p className="font-semibold">{patient.age} سنة</p>
+                    </div>
+                  )}
+                  {patient.dateOfBirth && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">تاريخ الميلاد</p>
+                      <p className="font-semibold">{new Date(patient.dateOfBirth).toLocaleDateString('ar-EG')}</p>
+                    </div>
+                  )}
+                  {patient.height && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">الطول</p>
+                      <p className="font-semibold">{patient.height} سم</p>
+                    </div>
+                  )}
+                  {patient.weight && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">الوزن</p>
+                      <p className="font-semibold">{patient.weight} كجم</p>
+                    </div>
+                  )}
+                  {patient.activityLevel && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">النشاط</p>
+                      <p className="font-semibold">{activityLabels[patient.activityLevel] || patient.activityLevel}</p>
+                    </div>
+                  )}
+                  {patient.goal && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">الهدف</p>
+                      <p className="font-semibold">{goalLabels[patient.goal] || patient.goal}</p>
+                    </div>
+                  )}
+                  {patient.email && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">البريد</p>
+                      <p className="font-semibold" dir="ltr">{patient.email}</p>
+                    </div>
+                  )}
+                  {patient.phone && (
+                    <div className="p-2 rounded bg-muted/50">
+                      <p className="text-muted-foreground">الهاتف</p>
+                      <p className="font-semibold" dir="ltr">{patient.phone}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* InBody Data */}
+                {inBodyData && (
+                  <>
+                    <div className="pt-2 border-t">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">بيانات InBody</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      {inBodyData.bodyFat !== undefined && inBodyData.bodyFat !== null && (
+                        <div className="p-2 rounded bg-red-50 text-center">
+                          <p className="text-muted-foreground">الدهون</p>
+                          <p className="font-semibold text-red-700">{inBodyData.bodyFat}%</p>
+                        </div>
+                      )}
+                      {inBodyData.muscleMass !== undefined && inBodyData.muscleMass !== null && (
+                        <div className="p-2 rounded bg-blue-50 text-center">
+                          <p className="text-muted-foreground">العضلات</p>
+                          <p className="font-semibold text-blue-700">{inBodyData.muscleMass} كجم</p>
+                        </div>
+                      )}
+                      {inBodyData.waterPercentage !== undefined && inBodyData.waterPercentage !== null && (
+                        <div className="p-2 rounded bg-cyan-50 text-center">
+                          <p className="text-muted-foreground">الماء</p>
+                          <p className="font-semibold text-cyan-700">{inBodyData.waterPercentage}%</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
-                {patient.phone && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">الهاتف</span>
-                    <span dir="ltr">{patient.phone}</span>
-                  </div>
+
+                {/* Macro Targets */}
+                {(patient.caloriesTarget || patient.proteinTarget || patient.carbsTarget || patient.fatsTarget || patient.waterTarget) && (
+                  <>
+                    <div className="pt-2 border-t">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">الأهداف الغذائية (الماكروز)</p>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 text-xs">
+                      {patient.caloriesTarget !== undefined && patient.caloriesTarget !== null && (
+                        <div className="p-2 rounded bg-orange-50 text-center">
+                          <p className="text-muted-foreground">سعرات</p>
+                          <p className="font-semibold text-orange-700">{Math.round(patient.caloriesTarget)}</p>
+                        </div>
+                      )}
+                      {patient.proteinTarget !== undefined && patient.proteinTarget !== null && (
+                        <div className="p-2 rounded bg-red-50 text-center">
+                          <p className="text-muted-foreground">بروتين</p>
+                          <p className="font-semibold text-red-700">{Math.round(patient.proteinTarget)}غ</p>
+                        </div>
+                      )}
+                      {patient.carbsTarget !== undefined && patient.carbsTarget !== null && (
+                        <div className="p-2 rounded bg-amber-50 text-center">
+                          <p className="text-muted-foreground">كرب</p>
+                          <p className="font-semibold text-amber-700">{Math.round(patient.carbsTarget)}غ</p>
+                        </div>
+                      )}
+                      {patient.fatsTarget !== undefined && patient.fatsTarget !== null && (
+                        <div className="p-2 rounded bg-yellow-50 text-center">
+                          <p className="text-muted-foreground">دهون</p>
+                          <p className="font-semibold text-yellow-700">{Math.round(patient.fatsTarget)}غ</p>
+                        </div>
+                      )}
+                      {patient.waterTarget !== undefined && patient.waterTarget !== null && (
+                        <div className="p-2 rounded bg-cyan-50 text-center">
+                          <p className="text-muted-foreground">ماء</p>
+                          <p className="font-semibold text-cyan-700">{patient.waterTarget} ل</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
-                {patient.height && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">الطول</span>
-                    <span>{patient.height} سم</span>
-                  </div>
-                )}
-                {patient.weight && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">الوزن</span>
-                    <span>{patient.weight} كجم</span>
-                  </div>
-                )}
-                {patient.activityLevel && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">النشاط</span>
-                    <span>{activityLabels[patient.activityLevel]}</span>
-                  </div>
-                )}
+
                 {patient.medicalNotes && (
                   <div className="pt-2 border-t">
-                    <span className="text-muted-foreground text-xs">ملاحظات طبية</span>
-                    <p className="mt-1 text-xs whitespace-pre-wrap">{patient.medicalNotes}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Macro Targets */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Flame className="size-4 text-primary" />
-                  الأهداف الغذائية
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {patient.caloriesTarget ? (
-                  <div className="space-y-3">
-                    <div className="p-3 rounded-lg bg-primary/5 border border-primary/10 text-center">
-                      <p className="text-xs text-muted-foreground">السعرات المستهدفة</p>
-                      <p className="text-3xl font-bold text-primary">{Math.round(patient.caloriesTarget)}</p>
-                      <p className="text-xs text-muted-foreground">سعرة/يوم</p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="p-2 rounded-lg bg-red-50 text-center">
-                        <p className="text-[10px] text-muted-foreground">البروتين</p>
-                        <p className="text-lg font-bold text-red-700">{Math.round(patient.proteinTarget || 0)}غ</p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-amber-50 text-center">
-                        <p className="text-[10px] text-muted-foreground">الكربوهيدرات</p>
-                        <p className="text-lg font-bold text-amber-700">{Math.round(patient.carbsTarget || 0)}غ</p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-yellow-50 text-center">
-                        <p className="text-[10px] text-muted-foreground">الدهون</p>
-                        <p className="text-lg font-bold text-yellow-700">{Math.round(patient.fatsTarget || 0)}غ</p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-cyan-50 text-center">
-                        <p className="text-[10px] text-muted-foreground">الماء</p>
-                        <p className="text-lg font-bold text-cyan-700">{patient.waterTarget || 0} لتر</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-6 text-center text-sm text-muted-foreground">
-                    أكمل بيانات المريض لحساب الماكروز
+                    <span className="text-muted-foreground text-xs font-semibold">ملاحظات طبية</span>
+                    <p className="mt-1 text-xs whitespace-pre-wrap bg-muted/30 p-2 rounded">{patient.medicalNotes}</p>
                   </div>
                 )}
               </CardContent>
@@ -1571,6 +1642,24 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
                 </SelectContent>
               </Select>
             </div>
+
+            {/* InBody Data */}
+            <div className="sm:col-span-2 pt-2 border-t">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">بيانات InBody (اختياري)</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">نسبة الدهون %</Label>
+              <Input type="number" step="0.1" value={editForm.bodyFatPercentage} onChange={(e) => setEditForm({ ...editForm, bodyFatPercentage: e.target.value })} className="h-9 text-sm" dir="ltr" min="1" max="70" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">الكتلة العضلية (كجم)</Label>
+              <Input type="number" step="0.1" value={editForm.muscleMass} onChange={(e) => setEditForm({ ...editForm, muscleMass: e.target.value })} className="h-9 text-sm" dir="ltr" min="1" max="150" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">نسبة الماء %</Label>
+              <Input type="number" step="0.1" value={editForm.waterPercentage} onChange={(e) => setEditForm({ ...editForm, waterPercentage: e.target.value })} className="h-9 text-sm" dir="ltr" min="20" max="80" />
+            </div>
+
             <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-xs font-medium">ملاحظات طبية</Label>
               <Textarea value={editForm.medicalNotes} onChange={(e) => setEditForm({ ...editForm, medicalNotes: e.target.value })} className="min-h-[80px] text-sm" />
