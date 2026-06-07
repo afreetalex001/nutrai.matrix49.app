@@ -81,7 +81,13 @@ export async function POST(request: NextRequest) {
     return Response.json(
       {
         message: 'تم التسجيل بنجاح. سيتم تفعيل حسابك بعد مراجعة الإدارة.',
-        user,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          isActive: user.isActive,
+        },
+        token: user.token,
       },
       { status: 201 }
     );

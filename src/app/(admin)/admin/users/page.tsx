@@ -502,6 +502,28 @@ export default function AdminUsersPage() {
                                         </p>
                                       </div>
                                     )}
+                                    {user.subscription?.endDate && (
+                                      <div className="text-center p-2 rounded-lg bg-background">
+                                        <p className={`text-sm font-bold ${
+                                          Math.max(0, Math.ceil((new Date(user.subscription.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) <= 3 ? 'text-red-700' : 'text-emerald-700'
+                                        }`}>
+                                          {Math.max(0, Math.ceil((new Date(user.subscription.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                          يوم متبقي
+                                        </p>
+                                      </div>
+                                    )}
+                                    {user.subscription?.plan && (
+                                      <div className="text-center p-2 rounded-lg bg-background">
+                                        <p className="text-sm font-bold text-blue-700">
+                                          {user.subscription.plan.nameAr}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                          نوع الخطة
+                                        </p>
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="flex justify-start gap-2">
                                     <Button

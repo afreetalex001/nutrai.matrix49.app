@@ -17,6 +17,30 @@ export async function GET(request: NextRequest) {
       return unauthorized();
     }
 
+    // Check if subscription expired and auto-deactivate
+    const fullUser = await db.user.findUnique({
+      where: { id: user.id },
+      include: { subscription: true },
+    });
+
+    if (fullUser && fullUser.isActive && fullUser.subscription && fullUser.subscription.endDate) {
+      const endDate = new Date(fullUser.subscription.endDate);
+      if (endDate < new Date()) {
+        await db.user.update({
+          where: { id: user.id },
+          data: { isActive: false },
+        });
+        await db.subscription.update({
+          where: { id: fullUser.subscription.id },
+          data: { status: 'expired' },
+        });
+        return Response.json(
+          { error: 'انتهت صلاحية اشتراكك. يرجى التواصل مع الإدارة.', expired: true },
+          { status: 403 }
+        );
+      }
+    }
+
     return Response.json({ user });
   } catch (error) {
     console.error('Error fetching current user:', error);

@@ -491,14 +491,14 @@ export default function AdminSubscriptionsPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className="flex items-center justify-center size-7 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">
-                              {sub.user.name.charAt(0)}
+                              {sub.user?.name?.charAt(0) || '?'}
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate max-w-[140px]">
-                                {sub.user.name}
+                                {sub.user?.name || 'غير معروف'}
                               </p>
                               <p className="text-[11px] text-muted-foreground truncate max-w-[140px]">
-                                {sub.user.email}
+                                {sub.user?.email || ''}
                               </p>
                             </div>
                           </div>

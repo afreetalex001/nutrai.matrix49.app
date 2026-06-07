@@ -84,11 +84,20 @@ export async function registerDoctor(email: string, password: string, name: stri
     },
   });
 
+  const token = generateToken({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role as 'doctor' | 'admin',
+    isActive: user.isActive,
+  });
+
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     isActive: user.isActive,
+    token,
   };
 }
 
