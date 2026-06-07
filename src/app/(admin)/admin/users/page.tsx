@@ -97,6 +97,8 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [plans, setPlans] = useState<{ id: string; nameAr: string; name: string; price: number }[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -360,20 +362,20 @@ export default function AdminUsersPage() {
                             <Avatar className="size-8 border border-slate-200">
                               <AvatarFallback
                                 className={`text-xs font-bold ${
-                                  user.isActive
+                                  user?.isActive
                                     ? 'bg-slate-50 text-slate-700'
                                     : 'bg-red-50 text-red-700'
                                 }`}
                               >
-                                {user.name.charAt(0)}
+                                {user?.name?.charAt(0) || '?'}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate max-w-[160px]">
-                                {user.name}
+                                {user?.name || 'غير معروف'}
                               </p>
                               <p className="text-[11px] text-muted-foreground truncate max-w-[160px]">
-                                {user.email}
+                                {user?.email || ''}
                               </p>
                             </div>
                           </div>
@@ -670,23 +672,35 @@ export default function AdminUsersPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="اختر خطة الاشتراك" />
-              </SelectTrigger>
-              <SelectContent>
+            {plans.length > 0 ? (
+              <div className="space-y-2">
                 {plans.map((plan) => (
-                  <SelectItem key={plan.id} value={plan.id}>
-                    {plan.nameAr || plan.name} - {plan.price === 0 ? 'مجاني' : `${plan.price} ج.م`}
-                  </SelectItem>
+                  <button
+                    key={plan.id}
+                    onClick={() => setSelectedPlanId(plan.id)}
+                    className={`w-full p-3 rounded-lg border text-right text-sm transition-all ${
+                      selectedPlanId === plan.id
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                        : 'border-border hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{plan.nameAr || plan.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {plan.price === 0 ? 'مجاني' : `${plan.price} ج.م`}
+                      </span>
+                    </div>
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
-            {selectedPlanId === '' && (
-              <p className="text-xs text-muted-foreground">
-                إذا لم تختر خطة، سيتم تفعيل الحساب بدون اشتراك (مجاني)
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center">
+                لا توجد خطط متاحة. سيتم تفعيل الحساب بدون اشتراك.
               </p>
             )}
+            <p className="text-xs text-muted-foreground">
+              {selectedPlanId ? 'سيتم تفعيل الحساب مع الخطة المحددة' : 'سيتم تفعيل الحساب بدون اشتراك (مجاني)'}
+            </p>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setActivateDialogOpen(false)} size="sm" className="text-xs">
