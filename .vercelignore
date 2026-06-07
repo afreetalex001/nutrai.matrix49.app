@@ -1,0 +1,6 @@
+android/
+android-shell/
+nutriclinic-release.keystore
+*.apk
+downloads/
+!public/NutriClinic.apk

@@ -1,0 +1,43 @@
+{
+  "name": "NutriClinic - منصة إدارة عيادات التغذية",
+  "short_name": "NutriClinic",
+  "description": "منصة متكاملة لإدارة عيادات التغذية مع المساعد الذكي وبوابة المريض",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "lang": "ar",
+  "dir": "rtl",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "المرضى",
+      "short_name": "المرضى",
+      "description": "قائمة المرضى",
+      "url": "/patients",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "المساعد الذكي",
+      "short_name": "AI",
+      "url": "/ai-assistant",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["medical", "health", "productivity"]
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NutriClinic</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:linear-gradient(135deg,#ecfdf5,#f0fdfa);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;color:#065f46;}
+h1{margin:20px 0 5px;font-size:24px;}
+.spinner{width:48px;height:48px;border:4px solid #d1fae5;border-top-color:#059669;border-radius:50%;animation:s 1s linear infinite;}
+@keyframes s{to{transform:rotate(360deg);}}
+.logo{width:80px;height:80px;background:#059669;border-radius:20px;display:flex;align-items:center;justify-content:center;color:white;font-size:40px;}
+p{font-size:13px;color:#4b5563;margin:8px 0;}
+.retry{margin-top:20px;padding:10px 20px;background:#059669;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;}
+</style>
+</head>
+<body>
+<div class="logo">🌱</div>
+<h1>NutriClinic</h1>
+<p>جارٍ الاتصال بالخادم...</p>
+<div class="spinner"></div>
+<p style="margin-top:20px;font-size:11px;">إذا استمرت هذه الشاشة، تحقق من اتصالك بالإنترنت</p>
+<button class="retry" onclick="window.location.reload()">إعادة المحاولة</button>
+<script>
+// Auto-redirect to live site after small delay
+setTimeout(()=>{window.location.href='https://nutriclinic.matrix49.app/portal'},300);
+</script>
+</body>
+</html>

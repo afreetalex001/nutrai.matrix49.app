@@ -1,0 +1,389 @@
+// ============================================================
+// NutriClinic SaaS - Production Database Schema (PostgreSQL / Neon)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==================== المستخدمين والمصادقة ====================
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  password       String
+  name           String
+  phone          String?   @db.VarChar(50)
+  role           String    @default("doctor") @db.VarChar(20)
+  isActive       Boolean   @default(false)
+  avatar         String?
+  specialization String?
+  clinicName     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  subscription    Subscription?
+  patients        Patient[]
+  aiConversations AiConversation[]
+}
+
+// ==================== الاشتراكات والخطط ====================
+
+model SubscriptionPlan {
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(50)
+  nameAr      String   @db.VarChar(100)
+  price       Float
+  currency    String   @default("EGP") @db.VarChar(10)
+  durationDays Int
+  features    String   @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  planId    String
+  status    String    @default("pending") @db.VarChar(20)
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+}
+
+// ==================== المرضى ====================
+
+model Patient {
+  id             String   @id @default(cuid())
+  doctorId       String
+  name           String
+  email          String?
+  phone          String?
+  gender         String?  @db.VarChar(10)
+  dateOfBirth    DateTime?
+  age            Int?
+  height         Float?
+  weight         Float?
+  activityLevel  String?  @db.VarChar(20)
+  goal           String?  @db.VarChar(30)
+  medicalNotes   String?  @db.Text
+  inBodyData     String?  @db.Text
+  // تحاليل مخبرية وتقارير طبية محللة بالـ AI (JSON: array of {fileName, uploadedAt, summary, rawText, fileUrl?})
+  labReports     String?  @db.Text
+  // ملخص ذكي عن المريض يتم توليده تلقائياً بواسطة AI (للسرعة عند فتح الملف)
+  aiSummary      String?  @db.Text
+  aiSummaryAt    DateTime?
+  caloriesTarget Float?
+  proteinTarget  Float?
+  carbsTarget    Float?
+  fatsTarget     Float?
+  waterTarget    Float?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  doctor         User             @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  visits         Visit[]
+  nutritionPlans NutritionPlan[]
+  exercisePlans  ExercisePlan[]
+  shareTokens    PatientShareToken[]
+  selfReports    PatientSelfReport[]
+}
+
+// ==================== توكين متابعة المريض ====================
+// يسمح للمريض بفتح بوابة عرض للقراءة فقط + إضافة وزن وملاحظات
+
+model PatientShareToken {
+  id            String   @id @default(cuid())
+  token         String   @unique @db.VarChar(64)
+  patientId     String
+  createdById   String   // الطبيب الذي أنشأ التوكن
+  expiresAt     DateTime
+  // صلاحيات (افتراضياً: عرض الخطط، إضافة وزن، إضافة ملاحظات)
+  canViewPlans     Boolean @default(true)
+  canSubmitWeight  Boolean @default(true)
+  canSubmitNote    Boolean @default(true)
+  isRevoked        Boolean @default(false)
+  lastAccessedAt   DateTime?
+  accessCount      Int     @default(0)
+  createdAt        DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([expiresAt])
+}
+
+// ==================== تقارير ذاتية من المريض ====================
+
+model PatientSelfReport {
+  id        String   @id @default(cuid())
+  patientId String
+  tokenId   String?  // التوكن المستخدم لإرسال التقرير
+  type      String   @db.VarChar(20) // "weight" | "note" | "feedback"
+  // للوزن
+  weight    Float?
+  bodyFat   Float?
+  // للملاحظات
+  note      String?  @db.Text
+  // قراءة الطبيب
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([isRead])
+}
+
+// ==================== الزيارات ====================
+
+model Visit {
+  id              String   @id @default(cuid())
+  patientId       String
+  weight          Float?
+  height          Float?
+  bodyFat         Float?
+  muscleMass      Float?
+  waterPercentage Float?
+  bmi             Float?
+  bmr             Float?
+  tdee            Float?
+  notes           String?  @db.Text
+  visitDate       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ==================== خطط التغذية ====================
+
+model NutritionPlan {
+  id               String   @id @default(cuid())
+  patientId        String
+  doctorId         String
+  name             String
+  description      String?  @db.Text
+  calories         Float
+  protein          Float
+  carbs            Float
+  fats             Float
+  water            Float?
+  meals            String   @db.Text
+  // بنية JSON الجديدة: { weekDays: [{ dayName, meals: [{ id, type, name, time?, items: [{ foodId?, name, grams, calories, protein, carbs, fats }] }] }] }
+  // إذا كان مُملوءاً، يُستخدم بدلاً من meals النصي
+  structuredPlan   String?  @db.Text
+  // حالة الخطة: draft (مسودة من AI)، approved (اعتمدها الطبيب)، archived
+  status           String   @default("draft") @db.VarChar(20)
+  weekNumber       Int?
+  isAdaptive       Boolean  @default(false)
+  adaptiveFromVisit String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ==================== خطط التمارين الرياضية ====================
+
+model ExercisePlan {
+  id               String   @id @default(cuid())
+  patientId        String
+  doctorId         String
+  name             String
+  description      String?  @db.Text
+  schedule         String   @db.Text
+  // بنية JSON الجديدة: { weekDays: [{ dayName, isRest, exercises: [{ id, name, sets, reps, restSeconds, notes? }] }] }
+  structuredPlan   String?  @db.Text
+  status           String   @default("draft") @db.VarChar(20)
+  weekNumber       Int?
+  isAdaptive       Boolean  @default(false)
+  adaptiveFromVisit String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+// ==================== قاعدة بيانات الأطعمة ====================
+
+model FoodItem {
+  id            String   @id @default(cuid())
+  // الأسماء
+  nameAr        String   @db.VarChar(150)
+  nameEn        String?  @db.VarChar(150)
+  // تصنيف: protein, carbs, vegetables, fruits, dairy, fats, snacks, beverages, prepared, sweets
+  category      String   @db.VarChar(30)
+  // القيم لكل 100 جرام (الحصة الافتراضية)
+  caloriesPer100 Float
+  proteinPer100  Float
+  carbsPer100    Float
+  fatsPer100     Float
+  fiberPer100    Float?
+  sugarPer100    Float?
+  // وحدات قياس بديلة (JSON): [{ unit: "كوب", grams: 240 }, { unit: "ملعقة كبيرة", grams: 15 }]
+  servingUnits   String?  @db.Text
+  // ملاحظات (مثل: مطبوخ، نيء، ناضج)
+  notes          String?  @db.Text
+  // هل صالح للحميات الخاصة
+  isVegetarian   Boolean  @default(false)
+  isVegan        Boolean  @default(false)
+  isGlutenFree   Boolean  @default(false)
+  isHalal        Boolean  @default(true)
+  isCustom       Boolean  @default(false)  // أصناف أضافها الطبيب
+  createdById    String?  // doctorId إذا custom
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([category])
+  @@index([nameAr])
+}
+
+// ==================== الذكاء الاصطناعي ====================
+
+model AiProvider {
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(50)
+  displayName String   @db.VarChar(100)
+  baseUrl     String?
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apiKeys   AiApiKey[]
+  usageLogs AiUsageLog[]
+}
+
+model AiApiKey {
+  id           String    @id @default(cuid())
+  providerId   String
+  apiKey       String
+  model        String    @db.VarChar(100)
+  isActive     Boolean   @default(true)
+  quotaLimit   Int?
+  quotaUsed    Int       @default(0)
+  quotaResetAt DateTime?
+  lastError    String?
+  lastErrorAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  provider  AiProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  usageLogs AiUsageLog[]
+}
+
+model AiUsageLog {
+  id           String   @id @default(cuid())
+  apiKeyId     String?
+  providerId   String
+  userId       String
+  requestType  String   @db.VarChar(30)
+  tokensUsed   Int      @default(0)
+  isSuccess    Boolean
+  errorMessage String?
+  responseTime Int?
+  createdAt    DateTime @default(now())
+
+  apiKey   AiApiKey?  @relation(fields: [apiKeyId], references: [id])
+  provider AiProvider @relation(fields: [providerId], references: [id])
+}
+
+model AiConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   @db.VarChar(20)
+  content        String   @db.Text
+  providerUsed   String?  @db.VarChar(100)
+  tokensUsed     Int?
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+// ==================== إدارة المحتوى (CMS) ====================
+
+model CmsContent {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  valueAr   String?  @db.Text
+  type      String   @default("text") @db.VarChar(20)
+  page      String?  @db.VarChar(50)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== أقسام الصفحة الرئيسية ====================
+
+model LandingPageSection {
+  id          String   @id @default(cuid())
+  sectionKey  String   @unique @db.VarChar(50)
+  title       String   @db.VarChar(255)
+  titleAr     String?  @db.VarChar(255)
+  subtitle    String?  @db.VarChar(500)
+  subtitleAr  String?  @db.VarChar(500)
+  content     String?  @db.Text
+  contentAr   String?  @db.Text
+  imageUrl    String?  @db.Text
+  isVisible   Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LandingPageItem {
+  id          String   @id @default(cuid())
+  sectionKey  String   @db.VarChar(50)
+  title       String   @db.VarChar(255)
+  titleAr     String?  @db.VarChar(255)
+  description String?  @db.Text
+  descriptionAr String? @db.Text
+  imageUrl    String?  @db.Text
+  iconName    String?  @db.VarChar(50)
+  linkUrl     String?  @db.VarChar(500)
+  sortOrder   Int      @default(0)
+  isVisible   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sectionKey])
+}
+
+// ==================== إعدادات النظام ====================
+
+model SystemSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
