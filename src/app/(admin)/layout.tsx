@@ -62,21 +62,21 @@ function AdminSidebar() {
     <Sidebar
       side="right"
       collapsible="icon"
-      className="border-l border-emerald-900/30 bg-[oklch(0.16_0.03_163)] text-emerald-50"
+      className="border-l border-emerald-900/30 bg-[oklch(0.16_0.03_163)] text-white"
     >
       <SidebarHeader className="p-4">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="hover:bg-emerald-800/40 text-emerald-50"
+              className="hover:bg-emerald-800/40 text-white"
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
                 <Shield className="size-4" />
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-bold text-sm text-emerald-50">لوحة الإدارة</span>
-                <span className="text-[10px] text-emerald-400">NutriClinic Admin</span>
+                <span className="font-bold text-sm text-white">لوحة الإدارة</span>
+                <span className="text-[10px] text-emerald-300">NutriClinic Admin</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -87,7 +87,7 @@ function AdminSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xs text-emerald-500">
+          <SidebarGroupLabel className="text-xs text-emerald-300 font-medium">
             القائمة الرئيسية
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -104,7 +104,7 @@ function AdminSidebar() {
                       asChild
                       isActive={isActive}
                       tooltip={item.title}
-                      className="transition-all duration-200 text-emerald-200 hover:text-emerald-50 hover:bg-emerald-800/40 data-[active=true]:bg-emerald-700/50 data-[active=true]:text-emerald-50"
+                      className="transition-all duration-200 text-emerald-100 hover:text-white hover:bg-emerald-800/40 data-[active=true]:bg-emerald-700/50 data-[active=true]:text-white font-medium"
                     >
                       <a href={item.href}>
                         <item.icon className="size-4" />
@@ -134,15 +134,15 @@ function AdminSidebar() {
         <SidebarSeparator className="bg-emerald-800/40" />
         <div className="flex items-center gap-3 px-2 py-1">
           <Avatar className="size-8 border-2 border-emerald-600/40">
-            <AvatarFallback className="bg-emerald-700/30 text-emerald-300 text-xs font-bold">
+            <AvatarFallback className="bg-emerald-700/30 text-white text-xs font-bold">
               {user?.name?.charAt(0) || 'م'}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
-            <span className="text-xs font-semibold text-emerald-200 truncate">
+            <span className="text-xs font-semibold text-white truncate">
               {user?.name || 'المدير'}
             </span>
-            <span className="text-[10px] text-emerald-500 truncate">مدير النظام</span>
+            <span className="text-[10px] text-emerald-300 truncate">مدير النظام</span>
           </div>
         </div>
       </SidebarFooter>
@@ -156,11 +156,11 @@ function AdminTopBar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-emerald-900/20 bg-[oklch(0.16_0.03_163)]/95 backdrop-blur-md px-4 no-print">
-      <SidebarTrigger className="-mr-1 text-emerald-300 hover:text-emerald-100 hover:bg-emerald-800/40" />
+      <SidebarTrigger className="-mr-1 text-white hover:text-emerald-100 hover:bg-emerald-800/40" />
 
       <div className="flex-1 flex items-center gap-3">
         <div className="flex items-center gap-2">
-          <Badge className="bg-emerald-600/80 text-emerald-50 hover:bg-emerald-600 border-0 text-[10px] px-2 py-0.5">
+          <Badge className="bg-emerald-600/80 text-white hover:bg-emerald-600 border-0 text-[10px] px-2 py-0.5">
             <Shield className="size-3 ml-1" />
             مدير النظام
           </Badge>
@@ -173,7 +173,7 @@ function AdminTopBar() {
           variant="ghost"
           size="sm"
           onClick={() => router.push('/dashboard')}
-          className="gap-1.5 text-emerald-400 hover:text-emerald-200 hover:bg-emerald-800/40 text-xs"
+          className="gap-1.5 text-emerald-200 hover:text-white hover:bg-emerald-800/40 text-xs"
         >
           <ArrowRight className="size-3.5" />
           <span className="hidden sm:inline">العودة للموقع</span>
@@ -183,17 +183,17 @@ function AdminTopBar() {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="gap-2 h-9 px-2 hover:bg-emerald-800/40 text-emerald-300 hover:text-emerald-100"
+              className="gap-2 h-9 px-2 hover:bg-emerald-800/40 text-emerald-200 hover:text-white"
             >
               <Avatar className="size-7 border border-emerald-600/40">
-                <AvatarFallback className="bg-emerald-700/30 text-emerald-300 text-[10px] font-bold">
+                <AvatarFallback className="bg-emerald-700/30 text-white text-[10px] font-bold">
                   {user?.name?.charAt(0) || 'م'}
                 </AvatarFallback>
               </Avatar>
               <span className="hidden md:block text-xs font-medium">
                 {user?.name || 'المدير'}
               </span>
-              <ChevronDown className="size-3 text-emerald-500" />
+              <ChevronDown className="size-3 text-emerald-300" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48">
@@ -271,7 +271,7 @@ export default function AdminLayout({
           <div className="flex items-center justify-center size-12 rounded-xl bg-emerald-600/20">
             <Shield className="size-6 text-emerald-400 animate-pulse" />
           </div>
-          <span className="text-sm text-emerald-400">جارٍ تحميل لوحة الإدارة...</span>
+          <span className="text-sm text-emerald-300">جارٍ تحميل لوحة الإدارة...</span>
         </motion.div>
       </div>
     );

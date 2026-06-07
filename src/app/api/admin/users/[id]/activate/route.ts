@@ -18,7 +18,7 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const { isActive } = body;
+    const { isActive, planId } = body;
 
     if (typeof isActive !== 'boolean') {
       return Response.json(
@@ -57,6 +57,37 @@ export async function POST(
         isActive: true,
       },
     });
+
+    // Create subscription if activating with planId
+    if (isActive && planId) {
+      try {
+        const plan = await db.plan.findUnique({ where: { id: planId } });
+        if (plan) {
+          const now = new Date();
+          const endDate = new Date(now);
+          endDate.setDate(now.getDate() + plan.durationDays);
+
+          await db.subscription.upsert({
+            where: { userId: id },
+            update: {
+              planId: plan.id,
+              status: 'active',
+              startDate: now,
+              endDate: endDate,
+            },
+            create: {
+              userId: id,
+              planId: plan.id,
+              status: 'active',
+              startDate: now,
+              endDate: endDate,
+            },
+          });
+        }
+      } catch (subError) {
+        console.error('Error creating subscription on activation:', subError);
+      }
+    }
 
     return Response.json({
       message: isActive ? 'تم تفعيل الحساب بنجاح' : 'تم تعطيل الحساب بنجاح',

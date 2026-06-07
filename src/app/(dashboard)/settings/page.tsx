@@ -355,18 +355,35 @@ export default function SettingsPage() {
                   <Badge variant="default" className="text-[10px] bg-emerald-600">
                     {subscription?.status === 'active' ? 'نشط' : 'مجاني'}
                   </Badge>
-                  {subscription?.endDate && (
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Calendar className="size-3" />
-                      ينتهي: {new Date(subscription.endDate).toLocaleDateString('ar-EG')}
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
-            <Button variant="outline" size="sm" className="text-xs gap-1">
-              ترقية الخطة
-            </Button>
+          </div>
+
+          {/* Days remaining and end date */}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {subscription?.endDate && (
+              <>
+                <div className="p-3 rounded-lg bg-orange-50 border border-orange-100 text-center">
+                  <p className="text-[10px] text-muted-foreground">الأيام المتبقية</p>
+                  <p className="text-xl font-bold text-orange-700">
+                    {Math.max(0, Math.ceil((new Date(subscription.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">يوم</p>
+                </div>
+                <div className="p-3 rounded-lg bg-blue-50 border border-blue-100 text-center">
+                  <p className="text-[10px] text-muted-foreground">تاريخ الانتهاء</p>
+                  <p className="text-lg font-bold text-blue-700">
+                    {new Date(subscription.endDate).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              </>
+            )}
+            {!subscription?.endDate && (
+              <div className="col-span-2 p-3 rounded-lg bg-muted/50 text-center text-xs text-muted-foreground">
+                لا يوجد تاريخ انتهاء محدد - اشتراك مجاني دائم
+              </div>
+            )}
           </div>
 
           <div className="mt-4 space-y-2 text-xs text-muted-foreground">

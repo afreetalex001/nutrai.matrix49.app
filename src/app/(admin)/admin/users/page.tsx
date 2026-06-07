@@ -99,6 +99,9 @@ export default function AdminUsersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [activateDialogOpen, setActivateDialogOpen] = useState(false);
+  const [activateUserId, setActivateUserId] = useState('');
+  const [activateUserName, setActivateUserName] = useState('');
 
   const fetchUsers = useCallback(
     async (page = 1) => {
@@ -134,9 +137,23 @@ export default function AdminUsersPage() {
     fetchUsers(1);
   }, [fetchUsers]);
 
+  useEffect(() => {
+    async function fetchPlans() {
+      try {
+        const res = await fetch('/api/plans', { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.plans) setPlans(data.plans);
+        }
+      } catch (e) { console.error('Error fetching plans:', e); }
+    }
+    if (token) fetchPlans();
+  }, [token]);
+
   const handleToggleActivation = async (
     userId: string,
-    currentStatus: boolean
+    currentStatus: boolean,
+    planId?: string
   ) => {
     setTogglingId(userId);
     try {
@@ -146,7 +163,7 @@ export default function AdminUsersPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ isActive: !currentStatus }),
+        body: JSON.stringify({ isActive: !currentStatus, planId }),
       });
       if (res.ok) {
         fetchUsers(pagination.page);
@@ -383,9 +400,16 @@ export default function AdminUsersPage() {
                           <Switch
                             checked={user.isActive}
                             disabled={togglingId === user.id}
-                            onCheckedChange={() =>
-                              handleToggleActivation(user.id, user.isActive)
-                            }
+                            onCheckedChange={() => {
+                              if (!user.isActive && user.role === 'doctor') {
+                                setActivateUserId(user.id);
+                                setActivateUserName(user.name);
+                                setSelectedPlanId('');
+                                setActivateDialogOpen(true);
+                              } else {
+                                handleToggleActivation(user.id, user.isActive);
+                              }
+                            }}
                             className="data-[state=checked]:bg-slate-600"
                           />
                         </TableCell>
@@ -632,6 +656,53 @@ export default function AdminUsersPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Activation Plan Dialog */}
+      <Dialog open={activateDialogOpen} onOpenChange={setActivateDialogOpen}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>تفعيل حساب {activateUserName}</DialogTitle>
+            <DialogDescription>
+              اختر الخطة التي سيتم تفعيلها لهذا المستخدم
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+              <SelectTrigger className="h-10">
+                <SelectValue placeholder="اختر خطة الاشتراك" />
+              </SelectTrigger>
+              <SelectContent>
+                {plans.map((plan) => (
+                  <SelectItem key={plan.id} value={plan.id}>
+                    {plan.nameAr || plan.name} - {plan.price === 0 ? 'مجاني' : `${plan.price} ج.م`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedPlanId === '' && (
+              <p className="text-xs text-muted-foreground">
+                إذا لم تختر خطة، سيتم تفعيل الحساب بدون اشتراك (مجاني)
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setActivateDialogOpen(false)} size="sm" className="text-xs">
+              إلغاء
+            </Button>
+            <Button
+              onClick={() => {
+                handleToggleActivation(activateUserId, false, selectedPlanId || undefined);
+                setActivateDialogOpen(false);
+              }}
+              disabled={togglingId !== null}
+              size="sm"
+              className="text-xs bg-primary hover:bg-primary/90"
+            >
+              {togglingId ? 'جارٍ التفعيل...' : 'تفعيل الحساب'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </motion.div>
