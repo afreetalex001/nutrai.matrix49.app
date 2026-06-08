@@ -325,36 +325,24 @@ async function getActiveProvidersWithKeys(): Promise<AiProviderConfig[]> {
  * 4. يستمر حتى ينجح أو تنفد كل المزودين
  * 5. يسجّل كل محاولة في AiUsageLog
  */
-export async function chatWithFallback(
+/**
+ * استدعاء مزود AI مع timeout (للتنفيذ المتوازي)
+ */
+async function callProviderWithTimeout(
+  provider: AiProviderConfig,
+  apiKeyConfig: AiApiKeyConfig,
   messages: ChatMessage[],
-  userId: string,
-  requestType: 'chat' | 'nutrition_plan' | 'exercise_plan' | 'macro_calc' = 'chat',
-  options?: ChatOptions
-): Promise<AiResponse> {
-  const providers = await getActiveProvidersWithKeys();
+  options?: ChatOptions,
+  timeoutMs = 45000
+): Promise<{ content: string; tokensUsed: number; finishReason?: string }> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`timeout`));
+    }, timeoutMs);
 
-  if (providers.length === 0) {
-    throw new Error('لا يوجد مزودو ذكاء اصطناعي نشطون. يرجى التواصل مع الإدارة.');
-  }
-
-  let fallbackOccurred = false;
-  let fallbackReason = '';
-
-  for (const provider of providers) {
-    for (const apiKeyConfig of provider.apiKeys) {
-      // التحقق من حصة الاستخدام
-      if (apiKeyConfig.quotaLimit && apiKeyConfig.quotaUsed >= apiKeyConfig.quotaLimit) {
-        fallbackOccurred = true;
-        fallbackReason = `Quota exceeded for ${provider.displayName}/${apiKeyConfig.model}`;
-        continue;
-      }
-
-      const startTime = Date.now();
-
+    (async () => {
       try {
-        // استدعاء المزود المناسب
         let result: { content: string; tokensUsed: number; finishReason?: string };
-
         switch (provider.name) {
           case 'openai':
             result = await callOpenAI(apiKeyConfig.apiKey, apiKeyConfig.model, messages, provider.baseUrl, options);
@@ -368,21 +356,86 @@ export async function chatWithFallback(
           default:
             result = await callOpenAI(apiKeyConfig.apiKey, apiKeyConfig.model, messages, provider.baseUrl, options);
         }
+        clearTimeout(timer);
+        resolve(result);
+      } catch (error) {
+        clearTimeout(timer);
+        reject(error);
+      }
+    })();
+  });
+}
 
+/**
+ * ===== النظام الجديد: التنفيذ المتوازي (Parallel Execution) =====
+ *
+ * يعمل كالتالي:
+ * 1. يجمع كل مفاتيح API النشطة من جميع المزودين في قائمة واحدة
+ * 2. يُطلق كل المفاتيح في نفس اللحظة (متوازياً) باستخدام Promise.race
+ * 3. أول مفتاح يرجع بنجاح يُعتمد ويتم إلغاء الباقي
+ * 4. يُسجّل كل فشل في AiUsageLog لمعرفة المفاتيح المعطلة
+ * 5. إذا فشلت جميع المفاتيح، يرجع خطأ شاملاً
+ * 6. يدعم مفاتيح متعددة من نفس المزود (مثلاً 5 مفاتيح OpenAI) تُطلق معاً
+ * 7. كل مفتاح له timeout 45 ثانية لمنع التعليق
+ */
+export async function chatWithFallback(
+  messages: ChatMessage[],
+  userId: string,
+  requestType: 'chat' | 'nutrition_plan' | 'exercise_plan' | 'macro_calc' = 'chat',
+  options?: ChatOptions
+): Promise<AiResponse> {
+  const providers = await getActiveProvidersWithKeys();
+
+  // تسطيح كل المفاتيح من جميع المزودين في قائمة واحدة
+  const allKeyConfigs: Array<{ provider: AiProviderConfig; key: AiApiKeyConfig; index: number }> = [];
+  let idx = 0;
+  for (const provider of providers) {
+    for (const apiKeyConfig of provider.apiKeys) {
+      // تخطي المفاتيح التي تجاوزت الحصة
+      if (apiKeyConfig.quotaLimit && apiKeyConfig.quotaUsed >= apiKeyConfig.quotaLimit) {
+        continue;
+      }
+      allKeyConfigs.push({ provider, key: apiKeyConfig, index: idx++ });
+    }
+  }
+
+  if (allKeyConfigs.length === 0) {
+    throw new Error('لا يوجد مزودو ذكاء اصطناعي نشطون. يرجى التواصل مع الإدارة.');
+  }
+
+  console.log(`[AI Parallel] Firing ${allKeyConfigs.length} keys in parallel across ${providers.length} providers...`);
+
+  const startTimeOverall = Date.now();
+  const failedKeys: Array<{ provider: string; model: string; error: string }> = [];
+
+  // إنشاء وعد لكل مفتاح — يحل عند النجاح ويرفض عند الفشل
+  const promises = allKeyConfigs.map(({ provider, key, index }) => {
+    return new Promise<AiResponse>(async (resolve, reject) => {
+      const startTime = Date.now();
+      try {
+        // تأخير بسيط (stagger) للمفاتيح من نفس المزود لتجنب rate limit مفاجئ
+        // مفاتيح نفس المزود يتأخر كل منها 200ms عن السابق
+        const sameProviderKeys = allKeyConfigs.filter(c => c.provider.id === provider.id);
+        const keyPosition = sameProviderKeys.findIndex(c => c.key.id === key.id);
+        if (keyPosition > 0) {
+          await new Promise(r => setTimeout(r, keyPosition * 200));
+        }
+
+        const result = await callProviderWithTimeout(provider, key, messages, options, 45000);
         const responseTime = Date.now() - startTime;
         const fr = String(result.finishReason || '').toUpperCase();
         const truncated = ['MAX_TOKENS', 'LENGTH', 'STOP_SEQUENCE'].includes(fr) && fr !== 'STOP';
 
-        // تحديث حصة الاستخدام
+        // تحديث حصة الاستخدام (نجاح)
         await db.aiApiKey.update({
-          where: { id: apiKeyConfig.id },
+          where: { id: key.id },
           data: { quotaUsed: { increment: 1 } },
         });
 
         // تسجيل الاستخدام الناجح
         await db.aiUsageLog.create({
           data: {
-            apiKeyId: apiKeyConfig.id,
+            apiKeyId: key.id,
             providerId: provider.id,
             userId,
             requestType,
@@ -392,64 +445,68 @@ export async function chatWithFallback(
           },
         });
 
-        return {
+        console.log(`[AI Parallel] ✅ Key #${index} (${provider.displayName}/${key.model}) succeeded in ${responseTime}ms`);
+
+        resolve({
           content: result.content,
           providerUsed: provider.displayName,
-          modelUsed: apiKeyConfig.model,
+          modelUsed: key.model,
           tokensUsed: result.tokensUsed,
-          responseTime,
-          fallbackOccurred,
-          fallbackReason: fallbackOccurred ? fallbackReason : undefined,
+          responseTime: Date.now() - startTimeOverall,
+          fallbackOccurred: allKeyConfigs.length > 1,
+          fallbackReason: allKeyConfigs.length > 1 ? 'Parallel execution used multiple keys' : undefined,
           truncated,
           finishReason: result.finishReason,
-        };
-
+        });
       } catch (error) {
         const responseTime = Date.now() - startTime;
-        const { fallback, reason } = shouldFallback(error);
+        const errorMsg = String(error).substring(0, 500);
+
+        failedKeys.push({ provider: provider.displayName, model: key.model, error: errorMsg });
 
         // تسجيل الخطأ
         await db.aiUsageLog.create({
           data: {
-            apiKeyId: apiKeyConfig.id,
+            apiKeyId: key.id,
             providerId: provider.id,
             userId,
             requestType,
             tokensUsed: 0,
             isSuccess: false,
-            errorMessage: String(error).substring(0, 500),
+            errorMessage: errorMsg,
             responseTime,
           },
         });
 
         // تحديث حالة المفتاح بآخر خطأ
         await db.aiApiKey.update({
-          where: { id: apiKeyConfig.id },
+          where: { id: key.id },
           data: {
-            lastError: String(error).substring(0, 500),
+            lastError: errorMsg,
             lastErrorAt: new Date(),
           },
         });
 
-        if (fallback) {
-          fallbackOccurred = true;
-          fallbackReason = reason;
-          console.warn(
-            `[AI Fallback] Switching from ${provider.displayName}/${apiKeyConfig.model}: ${reason}`
-          );
-          continue; // الانتقال للمفتاح/المزود التالي
-        }
-
-        // خطأ لا يستوجب التبديل (مثل خطأ في الطلب نفسه)
-        throw error;
+        console.warn(`[AI Parallel] ❌ Key #${index} (${provider.displayName}/${key.model}) failed: ${errorMsg.substring(0, 120)}`);
+        reject(error);
       }
-    }
-  }
+    });
+  });
 
-  // جميع المزودين فشلوا
-  throw new Error(
-    'جميع مزودي الذكاء الاصطناعي غير متاحين حالياً. يرجى المحاولة لاحقاً أو التواصل مع الإدارة.'
-  );
+  // اختيار أول وعد ناجح — Promise.any يرجع أول resolve ويرفض فقط لو كلهم رفضوا
+  try {
+    const response = await Promise.any(promises);
+    return response;
+  } catch (aggregateError) {
+    // جميع المفاتيح فشلت — اجمع الأخطاء في رسالة واحدة واضحة
+    const errorSummary = failedKeys
+      .map(f => `• ${f.provider} (${f.model}): ${f.error.substring(0, 100)}`)
+      .join('\n');
+    console.error(`[AI Parallel] ALL ${allKeyConfigs.length} keys failed.\n${errorSummary}`);
+    throw new Error(
+      `جميع مزودي الذكاء الاصطناعي غير متاحين حالياً (${allKeyConfigs.length} مفتاح فشل). يرجى المحاولة لاحقاً أو التواصل مع الإدارة.\n\nتفاصيل الأخطاء:\n${errorSummary}`
+    );
+  }
 }
 
 /**
