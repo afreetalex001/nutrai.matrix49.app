@@ -61,7 +61,7 @@ export async function POST(
     // Create subscription if activating with planId
     if (isActive && planId) {
       try {
-        const plan = await db.plan.findUnique({ where: { id: planId } });
+        const plan = await db.subscriptionPlan.findUnique({ where: { id: planId } });
         if (plan) {
           const now = new Date();
           const endDate = new Date(now);

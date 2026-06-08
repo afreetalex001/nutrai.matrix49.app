@@ -704,9 +704,9 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               {/* Subscription Details */}
-              {selectedUser.subscription && (
-                <div className="p-3 rounded-lg bg-muted/40 space-y-2">
-                  <p className="text-sm font-semibold">تفاصيل الاشتراك</p>
+              <div className="p-3 rounded-lg bg-muted/40 space-y-2">
+                <p className="text-sm font-semibold">تفاصيل الاشتراك</p>
+                {selectedUser.subscription ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <p className="text-[11px] text-muted-foreground">نوع الخطة</p>
@@ -718,15 +718,20 @@ export default function AdminUsersPage() {
                       <p className="text-[11px] text-muted-foreground">حالة الاشتراك</p>
                       <p className="text-sm font-medium">{getSubscriptionBadge(selectedUser.subscription)}</p>
                     </div>
-                    {selectedUser.subscription.endDate && (
+                    {selectedUser.subscription.endDate ? (
                       <div>
                         <p className="text-[11px] text-muted-foreground">تاريخ الانتهاء</p>
                         <p className="text-sm font-medium text-amber-700">
                           {formatDate(selectedUser.subscription.endDate)}
                         </p>
                       </div>
+                    ) : (
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">تاريخ الانتهاء</p>
+                        <p className="text-sm font-medium text-muted-foreground">غير محدد</p>
+                      </div>
                     )}
-                    {selectedUser.subscription.endDate && (
+                    {selectedUser.subscription.endDate ? (
                       <div>
                         <p className="text-[11px] text-muted-foreground">الأيام المتبقية</p>
                         <p className={`text-sm font-bold ${
@@ -735,10 +740,17 @@ export default function AdminUsersPage() {
                           {Math.max(0, Math.ceil((new Date(selectedUser.subscription.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} يوم
                         </p>
                       </div>
+                    ) : (
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">الأيام المتبقية</p>
+                        <p className="text-sm font-medium text-muted-foreground">غير محدد</p>
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-muted-foreground">لا يوجد اشتراك مرتبط بهذا المستخدم.</p>
+                )}
+              </div>
 
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
                 <span className="text-sm">حالة الحساب</span>
