@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const whereClause: Record<string, unknown> = {};
 
-    if (status) {
+    if (status && status !== 'all') {
       whereClause.status = status;
     }
 

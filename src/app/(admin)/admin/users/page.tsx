@@ -16,6 +16,8 @@ import {
   Calendar,
   Stethoscope,
   RefreshCw,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -105,6 +107,10 @@ export default function AdminUsersPage() {
   const [activateDialogOpen, setActivateDialogOpen] = useState(false);
   const [activateUserId, setActivateUserId] = useState('');
   const [activateUserName, setActivateUserName] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteUserId, setDeleteUserId] = useState('');
+  const [deleteUserName, setDeleteUserName] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchUsers = useCallback(
     async (page = 1) => {
@@ -175,6 +181,28 @@ export default function AdminUsersPage() {
       console.error('Error toggling activation:', error);
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteUserId) return;
+    setDeletingId(deleteUserId);
+    try {
+      const res = await fetch(`/api/admin/users/${deleteUserId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setDeleteDialogOpen(false);
+        fetchUsers(pagination.page);
+      } else {
+        const result = await res.json();
+        alert(result.error || 'حدث خطأ أثناء حذف المستخدم');
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -537,6 +565,19 @@ export default function AdminUsersPage() {
                                     >
                                       عرض التفاصيل الكاملة
                                     </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-xs gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => {
+                                        setDeleteUserId(user.id);
+                                        setDeleteUserName(user.name);
+                                        setDeleteDialogOpen(true);
+                                      }}
+                                    >
+                                      <Trash2 className="size-3" />
+                                      حذف
+                                    </Button>
                                   </div>
                                 </div>
                               </motion.div>
@@ -662,6 +703,43 @@ export default function AdminUsersPage() {
                   <p className="text-xs text-muted-foreground">محادثات AI</p>
                 </div>
               </div>
+              {/* Subscription Details */}
+              {selectedUser.subscription && (
+                <div className="p-3 rounded-lg bg-muted/40 space-y-2">
+                  <p className="text-sm font-semibold">تفاصيل الاشتراك</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">نوع الخطة</p>
+                      <p className="text-sm font-medium text-blue-700">
+                        {selectedUser.subscription.plan?.nameAr || 'غير معروف'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">حالة الاشتراك</p>
+                      <p className="text-sm font-medium">{getSubscriptionBadge(selectedUser.subscription)}</p>
+                    </div>
+                    {selectedUser.subscription.endDate && (
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">تاريخ الانتهاء</p>
+                        <p className="text-sm font-medium text-amber-700">
+                          {formatDate(selectedUser.subscription.endDate)}
+                        </p>
+                      </div>
+                    )}
+                    {selectedUser.subscription.endDate && (
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">الأيام المتبقية</p>
+                        <p className={`text-sm font-bold ${
+                          Math.max(0, Math.ceil((new Date(selectedUser.subscription.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) <= 3 ? 'text-red-700' : 'text-emerald-700'
+                        }`}>
+                          {Math.max(0, Math.ceil((new Date(selectedUser.subscription.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} يوم
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
                 <span className="text-sm">حالة الحساب</span>
                 <div className="flex items-center gap-2">
@@ -678,6 +756,22 @@ export default function AdminUsersPage() {
                     className="data-[state=checked]:bg-slate-600"
                   />
                 </div>
+              </div>
+
+              <div className="flex justify-start">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => {
+                    setDeleteUserId(selectedUser.id);
+                    setDeleteUserName(selectedUser.name);
+                    setDeleteDialogOpen(true);
+                  }}
+                >
+                  <Trash2 className="size-3" />
+                  حذف المستخدم
+                </Button>
               </div>
             </div>
           )}
@@ -738,6 +832,34 @@ export default function AdminUsersPage() {
               className="text-xs bg-primary hover:bg-primary/90"
             >
               {togglingId ? 'جارٍ التفعيل...' : 'تفعيل الحساب'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="size-5" />
+              تأكيد حذف المستخدم
+            </DialogTitle>
+            <DialogDescription>
+              سيتم حذف المستخدم <strong>{deleteUserName}</strong> وجميع بياناته (المرضى، الزيارات، الخطط، المحادثات). لا يمكن التراجع عن هذا الإجراء.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} size="sm" className="text-xs">
+              إلغاء
+            </Button>
+            <Button
+              onClick={handleDelete}
+              disabled={deletingId !== null}
+              size="sm"
+              className="text-xs bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deletingId ? 'جارٍ الحذف...' : 'حذف المستخدم'}
             </Button>
           </DialogFooter>
         </DialogContent>
