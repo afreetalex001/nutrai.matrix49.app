@@ -63,9 +63,18 @@ export async function POST(
       try {
         const plan = await db.subscriptionPlan.findUnique({ where: { id: planId } });
         if (plan) {
+          let durationDays = plan.durationDays;
+          if (plan.name === 'free') {
+            const freeTrialDaysSetting = await db.systemSettings.findFirst({
+              where: { key: 'free_trial_days' },
+            });
+            if (freeTrialDaysSetting) {
+              durationDays = parseInt(freeTrialDaysSetting.value) || 14;
+            }
+          }
           const now = new Date();
           const endDate = new Date(now);
-          endDate.setDate(now.getDate() + plan.durationDays);
+          endDate.setDate(now.getDate() + durationDays);
 
           await db.subscription.upsert({
             where: { userId: id },

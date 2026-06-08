@@ -18,6 +18,8 @@ import {
   RefreshCw,
   Trash2,
   AlertTriangle,
+  CreditCard,
+  Plus,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -112,6 +114,13 @@ export default function AdminUsersPage() {
   const [deleteUserName, setDeleteUserName] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [freeTrialDays, setFreeTrialDays] = useState(14);
+  const [manageSubDialogOpen, setManageSubDialogOpen] = useState(false);
+  const [manageSubUserId, setManageSubUserId] = useState('');
+  const [manageSubUserName, setManageSubUserName] = useState('');
+  const [manageSubPlanId, setManageSubPlanId] = useState('');
+  const [managingSubId, setManagingSubId] = useState<string | null>(null);
+
   const fetchUsers = useCallback(
     async (page = 1) => {
       try {
@@ -159,6 +168,19 @@ export default function AdminUsersPage() {
     if (token) fetchPlans();
   }, [token]);
 
+  useEffect(() => {
+    async function fetchSettings() {
+      try {
+        const res = await fetch('/api/admin/settings', { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.freeTrialDays === 'number') setFreeTrialDays(data.freeTrialDays);
+        }
+      } catch (e) { console.error('Error fetching settings:', e); }
+    }
+    if (token) fetchSettings();
+  }, [token]);
+
   const handleToggleActivation = async (
     userId: string,
     currentStatus: boolean,
@@ -203,6 +225,37 @@ export default function AdminUsersPage() {
       console.error('Error deleting user:', error);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    if (!manageSubUserId || !manageSubPlanId) return;
+    setManagingSubId(manageSubUserId);
+    try {
+      const res = await fetch(`/api/admin/users/${manageSubUserId}/subscription`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ planId: manageSubPlanId }),
+      });
+      if (res.ok) {
+        setManageSubDialogOpen(false);
+        fetchUsers(pagination.page);
+        // If detail dialog is open for same user, refresh detail
+        if (selectedUser && selectedUser.id === manageSubUserId) {
+          const updatedUser = users.find((u) => u.id === manageSubUserId);
+          if (updatedUser) setSelectedUser(updatedUser);
+        }
+      } else {
+        const result = await res.json();
+        alert(result.error || 'حدث خطأ أثناء إنشاء الاشتراك');
+      }
+    } catch (error) {
+      console.error('Error managing subscription:', error);
+    } finally {
+      setManagingSubId(null);
     }
   };
 
@@ -705,7 +758,23 @@ export default function AdminUsersPage() {
               </div>
               {/* Subscription Details */}
               <div className="p-3 rounded-lg bg-muted/40 space-y-2">
-                <p className="text-sm font-semibold">تفاصيل الاشتراك</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">تفاصيل الاشتراك</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs gap-1 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                    onClick={() => {
+                      setManageSubUserId(selectedUser.id);
+                      setManageSubUserName(selectedUser.name);
+                      setManageSubPlanId(selectedUser.subscription?.plan?.name || '');
+                      setManageSubDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="size-3" />
+                    {selectedUser.subscription ? 'تعديل الاشتراك' : 'إنشاء اشتراك'}
+                  </Button>
+                </div>
                 {selectedUser.subscription ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -818,6 +887,9 @@ export default function AdminUsersPage() {
                         {plan.price === 0 ? 'مجاني' : `${plan.price} ج.م`}
                       </span>
                     </div>
+                    <div className="text-[11px] text-muted-foreground mt-1">
+                      {plan.name === 'free' ? `مدة ${freeTrialDays} يوم (من إعدادات الموقع)` : `مدة ${plan.durationDays} يوم`}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -844,6 +916,67 @@ export default function AdminUsersPage() {
               className="text-xs bg-primary hover:bg-primary/90"
             >
               {togglingId ? 'جارٍ التفعيل...' : 'تفعيل الحساب'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Subscription Dialog */}
+      <Dialog open={manageSubDialogOpen} onOpenChange={setManageSubDialogOpen}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="size-4 text-slate-600" />
+              {manageSubUserName ? `إنشاء/تعديل اشتراك - ${manageSubUserName}` : 'إنشاء/تعديل اشتراك'}
+            </DialogTitle>
+            <DialogDescription>
+              اختر الخطة التي سيتم إنشاؤها/تعديلها لهذا المستخدم
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            {plans.length > 0 ? (
+              <div className="space-y-2">
+                {plans.map((plan) => (
+                  <button
+                    key={plan.id}
+                    onClick={() => setManageSubPlanId(plan.id)}
+                    className={`w-full p-3 rounded-lg border text-right text-sm transition-all ${
+                      manageSubPlanId === plan.id
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                        : 'border-border hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{plan.nameAr || plan.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {plan.price === 0 ? 'مجاني' : `${plan.price} ج.م`}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-1">
+                      {plan.name === 'free' ? `مدة ${freeTrialDays} يوم (من إعدادات الموقع)` : `مدة ${plan.durationDays} يوم`}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center">
+                لا توجد خطط متاحة.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setManageSubDialogOpen(false)} size="sm" className="text-xs">
+              إلغاء
+            </Button>
+            <Button
+              onClick={() => {
+                handleManageSubscription();
+              }}
+              disabled={managingSubId !== null || !manageSubPlanId}
+              size="sm"
+              className="text-xs bg-primary hover:bg-primary/90"
+            >
+              {managingSubId ? 'جارٍ الحفظ...' : 'حفظ الاشتراك'}
             </Button>
           </DialogFooter>
         </DialogContent>
