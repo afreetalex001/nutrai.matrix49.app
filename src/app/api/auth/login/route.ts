@@ -46,6 +46,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If account needs activation, return 403 with token so user can check status
+    if (result.needsActivation) {
+      return NextResponse.json(
+        {
+          error: 'حسابك لم يتم تفعيله بعد. يرجى الانتظار حتى تقوم الإدارة بتفعيل حسابك.',
+          needsActivation: true,
+          token: result.token,
+          user: result.user,
+        },
+        { status: 403 }
+      );
+    }
+
     // Build success response with token in body AND in httpOnly cookie
     const response = NextResponse.json(result);
 

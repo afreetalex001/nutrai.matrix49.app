@@ -116,10 +116,6 @@ export async function loginUser(email: string, password: string) {
     throw new Error('بيانات الدخول غير صحيحة');
   }
 
-  if (!user.isActive) {
-    throw new Error('ACCOUNT_NOT_ACTIVATED');
-  }
-
   const token = generateToken({
     id: user.id,
     email: user.email,
@@ -128,7 +124,7 @@ export async function loginUser(email: string, password: string) {
     isActive: user.isActive,
   });
 
-  return {
+  const result = {
     token,
     user: {
       id: user.id,
@@ -141,6 +137,12 @@ export async function loginUser(email: string, password: string) {
       specialization: user.specialization,
     },
   };
+
+  if (!user.isActive) {
+    return { ...result, needsActivation: true };
+  }
+
+  return result;
 }
 
 /**

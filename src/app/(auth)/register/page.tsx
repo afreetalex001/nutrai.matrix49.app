@@ -109,8 +109,10 @@ export default function RegisterPage() {
         return;
       }
 
-      // Registration successful — redirect to activation pending
-      // Store email in localStorage for the activation-pending page
+      // Registration successful — store token and redirect to activation pending
+      if (data.token) {
+        setAuth(data.token, data.user);
+      }
       localStorage.setItem('nutriclinic-pending-email', formData.email.trim());
       router.push('/activation-pending');
     } catch {
