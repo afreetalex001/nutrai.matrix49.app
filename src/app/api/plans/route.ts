@@ -3,6 +3,31 @@ import { db } from '@/lib/db';
 
 export async function GET() {
   try {
+    // Ensure free plan exists
+    let freePlan = await db.subscriptionPlan.findFirst({
+      where: { name: 'free' },
+    });
+    if (!freePlan) {
+      // Get free trial days from settings
+      const freeTrialDaysSetting = await db.systemSettings.findFirst({
+        where: { key: 'free_trial_days' },
+      });
+      const freeTrialDays = freeTrialDaysSetting
+        ? parseInt(freeTrialDaysSetting.value) || 14
+        : 14;
+      freePlan = await db.subscriptionPlan.create({
+        data: {
+          name: 'free',
+          nameAr: 'تجربة مجانية',
+          price: 0,
+          currency: 'EGP',
+          durationDays: freeTrialDays,
+          features: JSON.stringify(['إدارة غير محدودة للمرضى', 'مساعد ذكي AI', 'خطط تغذية وتمارين', 'تقارير وتحليلات', 'تجربة مجانية']),
+          isActive: true,
+        },
+      });
+    }
+
     const plans = await db.subscriptionPlan.findMany({
       where: { isActive: true },
       orderBy: { price: 'asc' },
