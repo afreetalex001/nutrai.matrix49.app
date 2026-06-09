@@ -103,6 +103,33 @@ export async function POST(request: NextRequest) {
       const finalCarbs = patient.carbsTarget || cCarbs;
       const finalFats = patient.fatsTarget || cFats;
 
+      // Compute BMI
+      let bmi: number | undefined;
+      if (patient.weight && patient.height) {
+        bmi = patient.weight / ((patient.height / 100) ** 2);
+      }
+
+      // Parse inBody data
+      let inBodyData: { bodyFat?: number; muscleMass?: number; waterPercentage?: number } | null = null;
+      if (patient.inBodyData) {
+        try { inBodyData = JSON.parse(patient.inBodyData); } catch { inBodyData = null; }
+      }
+
+      // Parse lab reports
+      let labReports: string | null = null;
+      if (patient.labReports) {
+        try {
+          const labArr = JSON.parse(patient.labReports) as Array<{ summary?: string }>;
+          labReports = labArr.map((l, i) => l.summary || `تحليل ${i + 1}`).join(' | ');
+        } catch { labReports = patient.labReports; }
+      }
+
+      // AI summary
+      let aiSummary: string | null = null;
+      if (patient.aiSummary) {
+        aiSummary = patient.aiSummary.length > 500 ? patient.aiSummary.substring(0, 500) + '...' : patient.aiSummary;
+      }
+
       const structured = await generateNutritionPlan(
         {
           name: patient.name,
@@ -118,6 +145,10 @@ export async function POST(request: NextRequest) {
           fatsTarget: finalFats,
           medicalNotes: patient.medicalNotes || undefined,
           doctorNotes: doctorNotes || undefined,
+          bmi,
+          inBodyData,
+          labReports,
+          aiSummary,
         },
         user.id
       );

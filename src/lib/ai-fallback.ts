@@ -635,11 +635,26 @@ async function generateNutritionDays(
     name: string; age: number; gender: string; weight: number; height: number;
     activityLevel: string; goal: string; caloriesTarget: number;
     proteinTarget: number; carbsTarget: number; fatsTarget: number;
-    medicalNotes?: string; allergies?: string; doctorNotes?: string;
+    medicalNotes?: string; doctorNotes?: string;
+    bmi?: number; inBodyData?: { bodyFat?: number; muscleMass?: number; waterPercentage?: number } | null;
+    labReports?: string | null; aiSummary?: string | null; allergies?: string | null;
   },
   dayNames: string[],
   userId: string
 ): Promise<NutritionPlanDay[]> {
+  const inBodyLines = [];
+  if (patientData.inBodyData) {
+    if (patientData.inBodyData.bodyFat !== undefined && patientData.inBodyData.bodyFat !== null) {
+      inBodyLines.push(`نسبة الدهون: ${patientData.inBodyData.bodyFat}%`);
+    }
+    if (patientData.inBodyData.muscleMass !== undefined && patientData.inBodyData.muscleMass !== null) {
+      inBodyLines.push(`الكتلة العضلية: ${patientData.inBodyData.muscleMass} كجم`);
+    }
+    if (patientData.inBodyData.waterPercentage !== undefined && patientData.inBodyData.waterPercentage !== null) {
+      inBodyLines.push(`نسبة الماء: ${patientData.inBodyData.waterPercentage}%`);
+    }
+  }
+
   const systemPrompt = `أنت أخصائي تغذية عربي. أنشئ ${dayNames.length} أيام تغذية بصيغة JSON صالحة فقط.
 
 الصيغة المطلوبة بالضبط:
@@ -665,13 +680,16 @@ async function generateNutritionDays(
 - كل وجبة 2-4 أصناف، أرقام دقيقة لكل صنف
 - الإجمالي اليومي ~${patientData.caloriesTarget} سعرة، ${patientData.proteinTarget}غ بروتين (±10%)
 - أطعمة عربية شعبية، تنويع بين الأيام
-${patientData.medicalNotes ? `- راعي: ${patientData.medicalNotes}` : ''}
+${patientData.medicalNotes ? `- راعي الملاحظات الطبية: ${patientData.medicalNotes}` : ''}
 ${patientData.allergies ? `- تجنب: ${patientData.allergies}` : ''}
 ${patientData.doctorNotes ? `- ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
+${inBodyLines.length > 0 ? `- بيانات InBody: ${inBodyLines.join('، ')}` : ''}
+${patientData.labReports ? `- تحاليل مخبرية: ${patientData.labReports}` : ''}
+${patientData.aiSummary ? `- ملخص المريض: ${patientData.aiSummary}` : ''}
 
 JSON فقط. ابدأ بـ { وانته بـ }.`;
 
-  const userPrompt = `المريض: ${patientData.name}، ${patientData.age}س، ${patientData.gender}، ${patientData.weight}كجم/${patientData.height}سم. هدف: ${patientData.goal}.`;
+  const userPrompt = `المريض: ${patientData.name}، ${patientData.age}س، ${patientData.gender}، ${patientData.weight}كجم/${patientData.height}سم${patientData.bmi ? `، BMI: ${Math.round(patientData.bmi * 10) / 10}` : ''}. هدف: ${patientData.goal}.`;
 
   const response = await chatWithAutoContinue(
     [
@@ -704,7 +722,9 @@ export async function generateNutritionPlan(
     name: string; age: number; gender: string; weight: number; height: number;
     activityLevel: string; goal: string; caloriesTarget: number;
     proteinTarget: number; carbsTarget: number; fatsTarget: number;
-    medicalNotes?: string; allergies?: string; doctorNotes?: string;
+    medicalNotes?: string; doctorNotes?: string;
+    bmi?: number; inBodyData?: { bodyFat?: number; muscleMass?: number; waterPercentage?: number } | null;
+    labReports?: string | null; aiSummary?: string | null; allergies?: string | null;
   },
   userId: string
 ): Promise<StructuredNutritionPlan> {
@@ -849,11 +869,26 @@ async function _unusedOldGenerate(
  */
 export async function generateExercisePlan(
   patientData: {
-    name: string; age: number; gender: string; weight: number;
+    name: string; age: number; gender: string; weight: number; height?: number;
     activityLevel: string; goal: string; medicalNotes?: string; doctorNotes?: string;
+    bmi?: number; inBodyData?: { bodyFat?: number; muscleMass?: number; waterPercentage?: number } | null;
+    labReports?: string | null; aiSummary?: string | null; allergies?: string | null;
   },
   userId: string
 ): Promise<StructuredExercisePlan> {
+  const inBodyLines = [];
+  if (patientData.inBodyData) {
+    if (patientData.inBodyData.bodyFat !== undefined && patientData.inBodyData.bodyFat !== null) {
+      inBodyLines.push(`نسبة الدهون: ${patientData.inBodyData.bodyFat}%`);
+    }
+    if (patientData.inBodyData.muscleMass !== undefined && patientData.inBodyData.muscleMass !== null) {
+      inBodyLines.push(`الكتلة العضلية: ${patientData.inBodyData.muscleMass} كجم`);
+    }
+    if (patientData.inBodyData.waterPercentage !== undefined && patientData.inBodyData.waterPercentage !== null) {
+      inBodyLines.push(`نسبة الماء: ${patientData.inBodyData.waterPercentage}%`);
+    }
+  }
+
   const systemPrompt = `أنت مدرب رياضي عربي معتمد. أنشئ خطة تمارين أسبوعية بصيغة JSON صالحة فقط (بدون markdown).
 
 البنية المطلوبة:
@@ -880,15 +915,21 @@ export async function generateExercisePlan(
 4. ركّز على هدف المريض: ${patientData.goal}
 5. كل تمرين: name (عربي مع اللاتيني بين قوسين إن أردت)، sets، reps، restSeconds، notes اختيارية
 6. اتبع تقسيم Push/Pull/Legs أو Upper/Lower أو Full Body حسب الأنسب
-7. ${patientData.medicalNotes ? `راعي: ${patientData.medicalNotes}` : ''}
+${patientData.medicalNotes ? `7. راعي الملاحظات الطبية: ${patientData.medicalNotes}` : ''}
 ${patientData.doctorNotes ? `8. ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
+${inBodyLines.length > 0 ? `9. بيانات InBody: ${inBodyLines.join('، ')}` : ''}
+${patientData.labReports ? `10. تحاليل مخبرية: ${patientData.labReports}` : ''}
+${patientData.aiSummary ? `11. ملخص المريض: ${patientData.aiSummary}` : ''}
+${patientData.allergies ? `12. حساسيات: ${patientData.allergies}` : ''}
 
 أرجع JSON صالحاً فقط.`
 
   const userPrompt = `بيانات المريض:
 - الاسم: ${patientData.name}
 - العمر: ${patientData.age}، الجنس: ${patientData.gender}
+- الطول: ${patientData.height ? patientData.height + ' سم' : 'غير محدد'}
 - الوزن: ${patientData.weight}كجم
+${patientData.bmi ? `- BMI: ${Math.round(patientData.bmi * 10) / 10}` : ''}
 - مستوى النشاط: ${patientData.activityLevel}
 - الهدف: ${patientData.goal}`;
 
