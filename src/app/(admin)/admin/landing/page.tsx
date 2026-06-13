@@ -1018,7 +1018,7 @@ export default function AdminLandingPage() {
                 <Input
                   value={settingsForm.site_logo_url || ''}
                   onChange={(e) => setSettingsForm({ ...settingsForm, site_logo_url: e.target.value })}
-                  placeholder="/logo.svg"
+                  placeholder="/logo.png"
                   dir="ltr"
                 />
                 {/* File upload for logo */}

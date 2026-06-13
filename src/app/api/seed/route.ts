@@ -330,7 +330,7 @@ export async function GET(request: NextRequest) {
         data: [
           { key: 'site_name', value: 'NutriClinic' },
           { key: 'site_name_ar', value: 'نوتري كلينيك' },
-          { key: 'site_logo_url', value: '/logo.svg' },
+          { key: 'site_logo_url', value: '/logo.png' },
           { key: 'site_copyright', value: '© 2024 NutriClinic. All rights reserved.' },
           { key: 'site_copyright_ar', value: '© 2024 نوتري كلينيك. جميع الحقوق محفوظة.' },
           { key: 'free_trial_days', value: '14' },

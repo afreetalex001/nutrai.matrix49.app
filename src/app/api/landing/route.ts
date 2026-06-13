@@ -26,6 +26,11 @@ export async function GET() {
       settingsMap[s.key] = s.value;
     }
 
+    // Update logo fallback to new logo.png
+    if (!settingsMap['site_logo_url'] || settingsMap['site_logo_url'] === '/logo.svg') {
+      settingsMap['site_logo_url'] = '/logo.png';
+    }
+
     // تجميع العناصر حسب القسم
     const sectionKeys = sections.map((s) => s.sectionKey);
     const filteredItems = items.filter((item) => sectionKeys.includes(item.sectionKey));

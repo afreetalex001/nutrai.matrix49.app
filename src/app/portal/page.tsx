@@ -87,7 +87,7 @@ export default function PatientLoginPage() {
       <header className="px-4 py-5 flex items-center justify-center">
         <div className="flex items-center gap-2">
           <div className="size-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-            <Image src="/logo.svg" alt="NutriClinic" width={28} height={28} priority />
+            <Image src="/logo.png" alt="NutriClinic" width={28} height={28} priority />
           </div>
           <div>
             <h1 className="font-bold text-base text-emerald-700">NutriClinic</h1>
