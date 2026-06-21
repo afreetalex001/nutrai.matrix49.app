@@ -1,25 +1,44 @@
 // ============================================================
-// mysql2 Connection Module - Prepared Statements Only
+// mysql2 Connection Module
 // وحدة الاتصال بقاعدة البيانات MySQL باستخدام mysql2
-// حماية مطلقة ضد SQL Injection عبر الاستعلامات المجهزة
+// حماية مطلقة ضد SQL Injection عبر Prepared Statements
 // ============================================================
 
 import mysql, { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 
 // ====== إعدادات الاتصال ======
+// نقرأ DATABASE_URL أولاً (mysql://user:pass@host:port/db) ثم نسقط للمتغيرات المنفصلة
+function parseDatabaseUrl(url: string | undefined) {
+  if (!url) return null;
+  // mysql://user:pass@host:port/db?ssl=true
+  const match = url.match(/^mysql:\/\/([^:]+):([^@]*)@([^:/?#]+)(?::(\d+))?\/([^?]+)/);
+  if (!match) return null;
+  const [, user, password, host, port, database] = match;
+  return {
+    host,
+    port: port ? parseInt(port) : 3306,
+    user,
+    password: decodeURIComponent(password),
+    database,
+  };
+}
+
+const parsedUrl = parseDatabaseUrl(process.env.DATABASE_URL);
+
 const DB_CONFIG = {
-  host: process.env.MYSQL_HOST || 'localhost',
-  port: parseInt(process.env.MYSQL_PORT || '3306'),
-  user: process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'nutriclinic_saas',
+  host: parsedUrl?.host || process.env.MYSQL_HOST || process.env.DB_HOST || 'localhost',
+  port: parseInt(parsedUrl?.port ? String(parsedUrl.port) : (process.env.MYSQL_PORT || process.env.DB_PORT || '3306')),
+  user: parsedUrl?.user || process.env.MYSQL_USER || process.env.DB_USER || 'root',
+  password: parsedUrl?.password || process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || '',
+  database: parsedUrl?.database || process.env.MYSQL_DATABASE || process.env.DB_NAME || 'nutriclinic_saas',
   waitForConnections: true,
   connectionLimit: 20,        // حد أقصى للاتصالات المتزامنة
   queueLimit: 0,              // بدون حد لانتظار الاتصالات
   enableKeepAlive: true,      // الحفاظ على الاتصال حياً
   keepAliveInitialDelay: 0,
-  charset: 'utf8mb4',        // دعم كامل للعربية والإيموجي
-  timezone: '+00:00',        // UTC
+  charset: 'utf8mb4',         // دعم كامل للعربية والإيموجي
+  timezone: '+00:00',         // UTC
+  dateStrings: false,         // إرجاع التواريخ كـ Date objects
 };
 
 // ====== Singleton Pool Pattern ======
@@ -36,34 +55,56 @@ export function getPool(): Pool {
     // اختبار الاتصال عند الإنشاء
     pool.getConnection()
       .then((conn: PoolConnection) => {
-        console.log('[MySQL] ✅ Pool connected successfully');
+        console.log('[MySQL] Pool connected successfully');
         conn.release();
       })
       .catch((err: Error) => {
-        console.error('[MySQL] ❌ Pool connection failed:', err.message);
+        console.error('[MySQL] Pool connection failed:', err.message);
       });
   }
   return pool;
 }
 
 /**
- * تنفيذ استعلام آمن باستخدام Prepared Statements
+ * تنفيذ استعلام SELECT آمن باستخدام Prepared Statements
  * يحظر تماماً دمج القيم مباشرة في SQL
  *
  * @param sql - الاستعلام مع علامات الاستفهام (?) كـ placeholders
  * @param params - القيم المراد ربطها بالاستعلام
- * @returns نتائج الاستعلام
+ * @returns نتائج الاستعلام (array of rows)
  */
 export async function query<T extends RowDataPacket[]>(
   sql: string,
   params: unknown[] = []
 ): Promise<T> {
-  const pool = getPool();
+  const p = getPool();
   try {
-    const [rows] = await pool.execute<T>(sql, params);
+    const [rows] = await p.execute<T>(sql, params);
     return rows;
   } catch (error) {
-    console.error('[MySQL] Query error:', { sql: sql.substring(0, 100), error });
+    console.error('[MySQL] Query error:', { sql: sql.substring(0, 200), error: (error as Error)?.message });
+    throw error;
+  }
+}
+
+/**
+ * تنفيذ استعلام SELECT آمن باستخدام query() (بدل execute) لدعم PLACEHOLDERS ديناميكية
+ * يُستخدم عندما يكون عدد الـ placeholders متغيراً (مثل IN (?, ?, ?))
+ *
+ * @param sql - الاستعلام مع علامات الاستفهام (?) كـ placeholders
+ * @param params - القيم المراد ربطها بالاستعلام
+ * @returns نتائج الاستعلام (array of rows)
+ */
+export async function queryRaw<T extends RowDataPacket[]>(
+  sql: string,
+  params: unknown[] = []
+): Promise<T> {
+  const p = getPool();
+  try {
+    const [rows] = await p.query<T>(sql, params);
+    return rows;
+  } catch (error) {
+    console.error('[MySQL] QueryRaw error:', { sql: sql.substring(0, 200), error: (error as Error)?.message });
     throw error;
   }
 }
@@ -79,12 +120,29 @@ export async function execute(
   sql: string,
   params: unknown[] = []
 ): Promise<ResultSetHeader> {
-  const pool = getPool();
+  const p = getPool();
   try {
-    const [result] = await pool.execute<ResultSetHeader>(sql, params);
+    const [result] = await p.execute<ResultSetHeader>(sql, params);
     return result;
   } catch (error) {
-    console.error('[MySQL] Execute error:', { sql: sql.substring(0, 100), error });
+    console.error('[MySQL] Execute error:', { sql: sql.substring(0, 200), error: (error as Error)?.message });
+    throw error;
+  }
+}
+
+/**
+ * تنفيذ استعلام INSERT/UPDATE/DELETE مع placeholders ديناميكية
+ */
+export async function executeRaw(
+  sql: string,
+  params: unknown[] = []
+): Promise<ResultSetHeader> {
+  const p = getPool();
+  try {
+    const [result] = await p.query<ResultSetHeader>(sql, params);
+    return result;
+  } catch (error) {
+    console.error('[MySQL] ExecuteRaw error:', { sql: sql.substring(0, 200), error: (error as Error)?.message });
     throw error;
   }
 }
@@ -99,8 +157,8 @@ export async function execute(
 export async function transaction<T>(
   callback: (connection: PoolConnection) => Promise<T>
 ): Promise<T> {
-  const pool = getPool();
-  const connection = await pool.getConnection();
+  const p = getPool();
+  const connection = await p.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -109,7 +167,7 @@ export async function transaction<T>(
     return result;
   } catch (error) {
     await connection.rollback();
-    console.error('[MySQL] Transaction rolled back:', error);
+    console.error('[MySQL] Transaction rolled back:', (error as Error)?.message);
     throw error;
   } finally {
     connection.release();
@@ -128,78 +186,15 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
-// ====== أمثلة على الاستخدام الآمن ======
-
 /**
- * مثال: إنشاء مستخدم جديد (Prepared Statement)
+ * إغلاق تجمع الاتصالات (للاختبارات فقط)
  */
-export async function createUser(email: string, hashedPassword: string, name: string) {
-  return execute(
-    'INSERT INTO User (id, email, password, name, role, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))',
-    [crypto.randomUUID(), email, hashedPassword, name, 'doctor', false]
-  );
-}
-
-/**
- * مثال: البحث عن مستخدم بالبريد الإلكتروني (Prepared Statement)
- */
-export async function findUserByEmail(email: string) {
-  const rows = await query<RowDataPacket[]>(
-    'SELECT * FROM User WHERE email = ? LIMIT 1',
-    [email]
-  );
-  return rows[0] || null;
-}
-
-/**
- * مثال: تحديث حالة تفعيل المستخدم (Prepared Statement)
- */
-export async function activateUser(userId: string) {
-  return execute(
-    'UPDATE User SET isActive = ?, updatedAt = datetime("now") WHERE id = ?',
-    [true, userId]
-  );
-}
-
-/**
- * مثال: إنشاء مريض جديد مع حساب الماكروز (Transaction)
- */
-export async function createPatientWithMacros(
-  doctorId: string,
-  patientData: {
-    name: string; phone?: string; gender?: string;
-    age?: number; height?: number; weight?: number;
-    activityLevel?: string; goal?: string;
-    caloriesTarget?: number; proteinTarget?: number;
-    carbsTarget?: number; fatsTarget?: number;
+export async function closePool(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
   }
-) {
-  return transaction(async (conn) => {
-    const patientId = crypto.randomUUID();
-
-    // إدراج المريض
-    await conn.execute(
-      `INSERT INTO Patient (id, doctorId, name, phone, gender, age, height, weight,
-       activityLevel, goal, caloriesTarget, proteinTarget, carbsTarget, fatsTarget,
-       isActive, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))`,
-      [patientId, doctorId, patientData.name, patientData.phone || null,
-       patientData.gender || null, patientData.age || null,
-       patientData.height || null, patientData.weight || null,
-       patientData.activityLevel || null, patientData.goal || null,
-       patientData.caloriesTarget || null, patientData.proteinTarget || null,
-       patientData.carbsTarget || null, patientData.fatsTarget || null]
-    );
-
-    // إنشاء زيارة أولى
-    await conn.execute(
-      `INSERT INTO Visit (id, patientId, weight, height, visitDate, createdAt)
-       VALUES (?, ?, ?, ?, datetime("now"), datetime("now"))`,
-      [crypto.randomUUID(), patientId, patientData.weight || null, patientData.height || null]
-    );
-
-    return { patientId };
-  });
 }
 
-export default { getPool, query, execute, transaction, healthCheck };
+export { RowDataPacket, ResultSetHeader, PoolConnection };
+export default { getPool, query, queryRaw, execute, executeRaw, transaction, healthCheck, closePool };

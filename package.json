@@ -8,17 +8,13 @@
   },
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "node server.js",
     "start:standalone": "node .next/standalone/server.js",
-    "postinstall": "prisma generate",
     "lint": "eslint .",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "db:reset": "prisma migrate reset",
-    "setup": "prisma generate && prisma db push && node -e \"console.log('DB ready. Hit POST /api/setup with setupKey to seed.')\""
+    "db:init": "node scripts/db-init.js",
+    "db:seed": "node scripts/seed.js",
+    "setup": "node scripts/db-init.js && echo 'DB ready. Hit POST /api/setup with setupKey to seed.'"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
@@ -32,7 +28,6 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.1.1",
     "@mdxeditor/editor": "^3.39.1",
-    "@prisma/client": "^6.11.1",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-aspect-ratio": "^1.1.7",
@@ -84,7 +79,6 @@
     "next-auth": "^4.24.11",
     "next-intl": "^4.3.4",
     "next-themes": "^0.4.6",
-    "prisma": "^6.11.1",
     "react": "^19.0.0",
     "react-day-picker": "^9.8.0",
     "react-dom": "^19.0.0",

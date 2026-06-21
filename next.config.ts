@@ -23,8 +23,8 @@ const nextConfig: NextConfig = {
     formats: ['image/avif', 'image/webp'],
   },
 
-  // فصل Prisma عن الحزمة لتجنب مشاكل الـ bundling على cPanel
-  serverExternalPackages: ['@prisma/client', 'prisma', 'mysql2'],
+  // فصل mysql2 عن الحزمة لتجنب مشاكل الـ bundling على cPanel
+  serverExternalPackages: ['mysql2'],
 
   // تعطيل telemetry لإرسال بيانات أقل
   logging: false,

@@ -94,7 +94,7 @@ if (fs.existsSync(standaloneServer)) {
     }
   }
 
-  // نسخ Prisma schema إلى standalone (مطلوب لـ prisma db push من standalone)
+  // نسخ prisma/ (يحتوي schema.sql) إلى standalone (مطلوب لـ /api/setup)
   const prismaDir = path.join(__dirname, 'prisma');
   const prismaTarget = path.join(actualStandaloneDir, 'prisma');
   if (fs.existsSync(prismaDir) && !fs.existsSync(prismaTarget)) {

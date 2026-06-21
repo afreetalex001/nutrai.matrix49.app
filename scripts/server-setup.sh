@@ -70,25 +70,19 @@ else
   exit 1
 fi
 
-# ===== 4. توليد Prisma Client =====
+# ===== 4. تهيئة قاعدة البيانات MySQL =====
 echo ""
-echo "🔧 Generating Prisma Client..."
-npx prisma generate 2>&1 | tail -3
-echo "✅ Prisma Client generated"
+echo "🔧 Initializing MySQL schema..."
+npm run db:init 2>&1 | tail -10
+echo "✅ MySQL schema initialized"
 
-# ===== 5. دفع مخطط قاعدة البيانات =====
-echo ""
-echo "📊 Pushing database schema..."
-npx prisma db push --skip-generate 2>&1 | tail -5
-echo "✅ Database schema pushed"
-
-# ===== 6. بناء التطبيق =====
+# ===== 5. بناء التطبيق =====
 echo ""
 echo "🏗️ Building Next.js application..."
 npm run build 2>&1 | tail -10
 echo "✅ Build completed"
 
-# ===== 7. بذر البيانات الأولية =====
+# ===== 6. بذر البيانات الأولية =====
 SEED_KEY=$(grep SETUP_KEY "${APP_DIR}/.env.production" | cut -d'=' -f2)
 
 echo ""

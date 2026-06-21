@@ -28,10 +28,7 @@ npm install --legacy-peer-deps
 cp .env.example .env
 # عدّل .env بقيم MySQL الحقيقية للاستضافة (سنحصل عليها في الخطوة 3)
 
-# 4) توليد Prisma Client
-npx prisma generate
-
-# 5) البناء للإنتاج
+# 4) البناء للإنتاج
 npm run build
 ```
 
@@ -39,6 +36,8 @@ npm run build
 - `.next/standalone/` — خادم Next.js المستقل (يحتوي server.js خاص به)
 - `.next/static/` — ملفات ثابتة (JS, CSS)
 - `public/` — ملفات عامة (صور، شعار، APK)
+
+> **ملاحظة**: لا حاجة لـ `prisma generate` بعد الآن — تم استبدال Prisma بـ mysql2 بالكامل.
 
 ---
 
@@ -143,7 +142,7 @@ cp -r public .next/standalone/
 
 ---
 
-## 🗃️ الخطوة 5: إنشاء جداول قاعدة البيانات (Prisma)
+## 🗃️ الخطوة 5: إنشاء جداول قاعدة البيانات (MySQL Schema)
 
 > هذه الخطوة يجب تنفيذها مرة واحدة فقط.
 
@@ -153,10 +152,11 @@ cp -r public .next/standalone/
 
 ```bash
 cd ~/nutrai.matrix49.app
-npx prisma db push
+npm run db:init
 ```
 
-هذا سيقرأ `prisma/schema.prisma` وينشئ كل الجداول الـ 16 في MySQL.
+هذا سيقرأ `prisma/schema.sql` وينشئ كل الجداول الـ 19 في MySQL.
+السكربت آمن — يتخطى الجداول الموجودة دون فشل.
 
 ### الطريقة 2: عبر /api/setup (بديل)
 
@@ -169,7 +169,7 @@ curl -X POST https://nutrai.matrix49.app/api/setup \
 ```
 
 سيقوم بـ:
-1. محاولة `prisma db push` تلقائيًا (قد يفشل على cPanel مشترك).
+1. تطبيق `prisma/schema.sql` تلقائيًا (ينشئ الجداول إن لم تكن موجودة).
 2. إنشاء حساب الأدمن: `admin@nutriclinic.com / Admin@2024`.
 3. إنشاء حساب الطبيب التجريبي: `doctor@demo.com / Doctor@2024`.
 4. إنشاء خطط الاشتراك (monthly, yearly, free).
@@ -177,7 +177,7 @@ curl -X POST https://nutrai.matrix49.app/api/setup \
 6. إنشاء أقسام الصفحة الرئيسية.
 7. إنشاء إعدادات النظام.
 
-> **ملاحظة**: إذا فشل `prisma db push` تلقائيًا، نفّذه يدويًا من Terminal ثم استدعِ `/api/setup` لزرع البيانات.
+> **ملاحظة**: تم استبدال `prisma db push` بـ `npm run db:init` (أو تلقائيًا عبر `/api/setup`) — لا حاجة لـ Prisma CLI بعد الآن.
 
 ---
 
@@ -247,18 +247,16 @@ post_max_size = 50M
 3. من phpMyAdmin، جرّب تسجيل الدخول بنفس بيانات المستخدم للتأكد.
 4. تأكد أن المستخدم مرتبط بالقاعدة بـ ALL PRIVILEGES.
 
-### المشكلة: prisma db push يفشل بـ LVE error
+### المشكلة: فشل إنشاء الجداول (db:init يفشل بـ LVE error)
 
 **السبب**: قيود RAM على الاستضافة المشتركة.
 
 **الحل**:
-1. ابنِ Prisma Client محليًا: `npx prisma generate`.
-2. ارفع مجلد `node_modules/.prisma/` جاهزًا مع باقي الملفات.
-3. بدلًا من `prisma db push`، استخدم Prisma Migrate محليًا وارفع ملفات SQL:
-   ```bash
-   npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > schema.sql
-   ```
-4. استورد `schema.sql` عبر phpMyAdmin.
+1. استورد `prisma/schema.sql` يدويًا عبر phpMyAdmin:
+   - اذهب إلى phpMyAdmin ← اختر القاعدة ← تبويب **Import**.
+   - اختر ملف `prisma/schema.sql` من جهازك.
+   - اضغط **Go**.
+2. أو استدعِ `/api/setup` بعد تشغيل التطبيق — سيطبّق الـ schema تلقائيًا.
 
 ### المشكلة: API requests timeout (خاصة AI endpoints)
 
@@ -325,7 +323,7 @@ chown $USER:$USER ~/nutrai.matrix49.app/public/uploads
 18. LandingPageItem
 19. SystemSettings
 
-> **ملاحظة**: العدد الفعلي 19 جدولًا. يمكنك رؤيتها كلها في phpMyAdmin بعد تنفيذ `prisma db push`.
+> **ملاحظة**: العدد الفعلي 19 جدولًا. يمكنك رؤيتها كلها في phpMyAdmin بعد تنفيذ `npm run db:init`.
 
 ### أوامر مفيدة
 
@@ -337,10 +335,10 @@ pkill -f "node server.js" && nohup node server.js > server.log 2>&1 &
 tail -f ~/nutrai.matrix49.app/server.log
 
 # فحص حالة قاعدة البيانات
-npx prisma db execute --file /dev/null --schema prisma/schema.prisma
+mysql -u matrmylq_ncuser -p matrmylq_nutriclinic -e "SHOW TABLES;"
 
-# إعادة بناء Prisma Client (بعد تحديث schema)
-npx prisma generate
+# إعادة تطبيق الـ schema (بعد تحديث schema.sql)
+npm run db:init
 
 # تصدير قاعدة البيانات من phpMyAdmin
 # ← اختر القاعدة ← Export ← Custom ← Format: SQL ← Go

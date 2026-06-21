@@ -5,9 +5,10 @@
 // ============================================================
 
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { db, execute } from '@/lib/db';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
+import fs from 'fs';
+import path from 'path';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,21 +23,44 @@ export async function POST(request: NextRequest) {
 
     const results: string[] = [];
 
-    // ===== 1. دفع مخطط Prisma إلى قاعدة البيانات =====
-    // ملاحظة: على cPanel مشترك، قد لا يعمل execSync بسبب قيود LVE.
-    // الحل الموصى به: تشغيل `npx prisma db push` يدويًا من Terminal أولاً.
+    // ===== 1. تطبيق مخطط MySQL (schema.sql) =====
+    // يقرأ ملف prisma/schema.sql وينفذه مقابل قاعدة البيانات
     try {
-      const { execSync } = require('child_process');
-      execSync('npx prisma db push --skip-generate', {
-        stdio: 'pipe',
-        cwd: process.cwd(),
-        timeout: 30000, // 30 ثانية كحد أقصى
-      });
-      results.push('Database schema pushed successfully');
+      const schemaPath = path.join(process.cwd(), 'prisma', 'schema.sql');
+      if (fs.existsSync(schemaPath)) {
+        const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+        // تقسيم الـ SQL إلى statements منفصلة
+        const statements = schemaSql
+          .split('\n')
+          .filter((line) => !line.trim().startsWith('--'))
+          .join('\n')
+          .split(/;\s*\n/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && !s.match(/^SET\s+/i));
+
+        let executed = 0;
+        let skipped = 0;
+        for (const stmt of statements) {
+          try {
+            await execute(stmt, []);
+            executed++;
+          } catch (err: any) {
+            // تخطي الجداول الموجودة (ER_TABLE_EXISTS_ERROR = 1050)
+            if (err.errno === 1050) {
+              skipped++;
+            } else {
+              console.warn('[setup] SQL statement skipped:', err.message);
+            }
+          }
+        }
+        results.push(`Database schema applied: ${executed} statements executed, ${skipped} tables already existed`);
+      } else {
+        results.push('schema.sql not found — assuming tables already exist');
+      }
     } catch (schemaError: any) {
       const errMsg = schemaError.message?.substring(0, 200) || 'see logs';
-      results.push(`Schema push skipped (run "npx prisma db push" manually from terminal): ${errMsg}`);
-      // لا نفشل الـ setup كامل — قد تكون الجداول موجودة بالفعل من تشغيل يدوي
+      results.push(`Schema application skipped: ${errMsg}`);
+      // لا نفشل الـ setup كامل — قد تكون الجداول موجودة بالفعل
     }
 
     // ===== 2. إنشاء حساب الإدارة =====
