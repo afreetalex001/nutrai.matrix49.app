@@ -1,11 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // ملاحظة: تمت إزالة output: "standalone" لأن Vercel يتولى ذلك تلقائياً
+  // ضروري لنشر cPanel: يُنتج مجلد .next/standalone قابل للنقل
+  // يعمل مع server.js كنقطة دخول على Node.js App في cPanel
+  output: "standalone",
+
+  // تجاهل أخطاء TypeScript أثناء البناء (مؤقت - يجب إصلاحها لاحقًا)
   typescript: {
     ignoreBuildErrors: true,
   },
+
   reactStrictMode: false,
+
   images: {
     remotePatterns: [
       {
@@ -13,9 +19,15 @@ const nextConfig: NextConfig = {
         hostname: '**',
       },
     ],
+    // تحسين الأداء على الاستضافة المشتركة
+    formats: ['image/avif', 'image/webp'],
   },
-  // تحسين حزم Prisma على Vercel Serverless
-  serverExternalPackages: ['@prisma/client', 'prisma'],
+
+  // فصل Prisma عن الحزمة لتجنب مشاكل الـ bundling على cPanel
+  serverExternalPackages: ['@prisma/client', 'prisma', 'mysql2'],
+
+  // تعطيل telemetry لإرسال بيانات أقل
+  logging: false,
 };
 
 export default nextConfig;

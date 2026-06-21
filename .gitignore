@@ -78,14 +78,13 @@ download/
 # Agent context
 agent-ctx/
 
-# cPanel scripts (not needed in repo)
+# cPanel scripts (legacy - not needed)
 cpanel-setup.sh
 create-nodejs-app.sh
 lightweight-setup.sh
 deploy.sh
 htaccess-passenger.conf
 .cpanel.yml
-app.js
 .env.production
 
 # cPanel files (legacy)

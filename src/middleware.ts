@@ -27,6 +27,7 @@ const PUBLIC_API_PATHS = [
   '/api/setup',
   '/api/landing',
   '/api/patient-portal/', // كل البوابة محمية بالتوكن في URL
+  '/api/cron/', // مهام cron المجدولة (تُحمى بمفتاح في الـ URL)
 ];
 
 export function middleware(request: NextRequest) {

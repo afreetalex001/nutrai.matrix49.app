@@ -1,0 +1,35 @@
+# ============================================================
+# NutriClinic SaaS - Apache Rewrite Rules
+# إعادة توجيه كل الطلبات إلى تطبيق Node.js على المنفذ الداخلي
+# ============================================================
+# هذا الملف يستخدم مع إعداد cPanel Proxy أو当你 لا تستخدم
+# Phusion Passenger مباشرة. ضعه في مجلد public_html أو مجلد
+# التطبيق.
+# ============================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # السماح بالوصول المباشر للملفات الثابتة
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # إعادة توجيه كل الطلبات الأخرى إلى تطبيق Node.js
+    # استبدل PORT بالمنفذ الفعلي لتطبيقك في cPanel
+    RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+</IfModule>
+
+# تمرير headers مهمة إلى تطبيق Node.js
+<IfModule mod_headers.c>
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Host "%{HTTP_HOST}e" env=HTTP_HOST
+</IfModule>
+
+# مهلة ط_extendedة لطلبات AI التي قد تستغرق وقتًا أطول
+<IfModule mod_proxy.c>
+    ProxyTimeout 300
+</IfModule>

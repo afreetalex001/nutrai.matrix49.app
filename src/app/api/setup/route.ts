@@ -23,15 +23,20 @@ export async function POST(request: NextRequest) {
     const results: string[] = [];
 
     // ===== 1. دفع مخطط Prisma إلى قاعدة البيانات =====
+    // ملاحظة: على cPanel مشترك، قد لا يعمل execSync بسبب قيود LVE.
+    // الحل الموصى به: تشغيل `npx prisma db push` يدويًا من Terminal أولاً.
     try {
       const { execSync } = require('child_process');
       execSync('npx prisma db push --skip-generate', {
         stdio: 'pipe',
         cwd: process.cwd(),
+        timeout: 30000, // 30 ثانية كحد أقصى
       });
       results.push('Database schema pushed successfully');
     } catch (schemaError: any) {
-      results.push(`Schema push note: ${schemaError.message?.substring(0, 100) || 'see logs'}`);
+      const errMsg = schemaError.message?.substring(0, 200) || 'see logs';
+      results.push(`Schema push skipped (run "npx prisma db push" manually from terminal): ${errMsg}`);
+      // لا نفشل الـ setup كامل — قد تكون الجداول موجودة بالفعل من تشغيل يدوي
     }
 
     // ===== 2. إنشاء حساب الإدارة =====
