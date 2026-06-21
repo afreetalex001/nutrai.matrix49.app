@@ -27,6 +27,8 @@ const PUBLIC_API_PATHS = [
   '/api/setup',
   '/api/landing',
   '/api/patient-portal/', // كل البوابة محمية بالتوكن في URL
+  '/api/analytics/visit', // تتبع زوار مجهول بدون بيانات حساسة
+  '/api/errors/client', // تسجيل أخطاء الواجهة
   '/api/cron/', // مهام cron المجدولة (تُحمى بمفتاح في الـ URL)
 ];
 

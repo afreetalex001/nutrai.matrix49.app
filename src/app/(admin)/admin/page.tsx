@@ -15,6 +15,8 @@ import {
   Shield,
   TrendingUp,
   ArrowUpLeft,
+  Globe2,
+  Radio,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +44,11 @@ interface AdminStats {
     successRate: number;
     tokensUsed: number;
   };
+  visitorStats: {
+    current: number;
+    monthly: number;
+    total: number;
+  };
   recentRegistrations: Array<{
     id: string;
     name: string;
@@ -59,6 +66,7 @@ interface AdminStats {
     activeApiKeys: number;
     totalApiKeys: number;
     recentErrors: number;
+    unresolvedSystemErrors: number;
   };
 }
 
@@ -258,6 +266,37 @@ export default function AdminOverviewPage() {
             icon={DollarSign}
             description="من الاشتراكات النشطة"
             color="bg-amber-100 text-amber-700"
+          />
+        </div>
+      </div>
+
+      {/* Visitor Stats */}
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+          <Globe2 className="size-4" />
+          زوار الموقع الفريدون
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard
+            title="الزوار الحاليون"
+            value={stats.visitorStats?.current || 0}
+            icon={Radio}
+            description="نشطون خلال آخر ٥ دقائق"
+            color="bg-emerald-100 text-emerald-700"
+          />
+          <StatCard
+            title="زوار الشهر"
+            value={(stats.visitorStats?.monthly || 0).toLocaleString('ar-EG')}
+            icon={TrendingUp}
+            description="زوار فريدون هذا الشهر"
+            color="bg-cyan-100 text-cyan-700"
+          />
+          <StatCard
+            title="إجمالي الزوار"
+            value={(stats.visitorStats?.total || 0).toLocaleString('ar-EG')}
+            icon={Globe2}
+            description="منذ تفعيل التتبع"
+            color="bg-indigo-100 text-indigo-700"
           />
         </div>
       </div>
@@ -540,7 +579,7 @@ export default function AdminOverviewPage() {
                   </Badge>
                 </div>
 
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 cursor-pointer hover:bg-muted/60" onClick={() => router.push('/admin/errors')}>
                   <div className="flex items-center gap-3">
                     <div
                       className={`flex items-center justify-center size-8 rounded-lg ${
@@ -560,7 +599,7 @@ export default function AdminOverviewPage() {
                     <div>
                       <p className="text-sm font-medium">أخطاء حديثة</p>
                       <p className="text-[11px] text-muted-foreground">
-                        {stats.systemHealth.recentErrors} خطأ في آخر ٢٤ ساعة
+                        {stats.systemHealth.recentErrors} خطأ في آخر ٢٤ ساعة • {stats.systemHealth.unresolvedSystemErrors || 0} غير محلول
                       </p>
                     </div>
                   </div>

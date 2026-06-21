@@ -6,6 +6,8 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthUser, unauthorized, forbidden, isAdmin } from '@/lib/api-auth';
+import { getVisitorStats } from '@/lib/analytics';
+import { logSystemError } from '@/lib/error-logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -114,9 +116,11 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    const visitorStats = await getVisitorStats();
+
     // System health
     const [activeProviders, activeApiKeys, totalApiKeys] = await Promise.all([
-      db.aiProvider.count({ where: { isActive: true } }),
+      db.aiProvider.count({ where: { isActive: true, isDeleted: false } }),
       db.aiApiKey.count({ where: { isActive: true } }),
       db.aiApiKey.count(),
     ]);
@@ -124,12 +128,17 @@ export async function GET(request: NextRequest) {
     // Errors in last 24h
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-    const recentErrors = await db.aiUsageLog.count({
-      where: {
-        createdAt: { gte: twentyFourHoursAgo },
-        isSuccess: false,
-      },
-    });
+    const [recentAiErrors, recentSystemErrors, unresolvedSystemErrors] = await Promise.all([
+      db.aiUsageLog.count({
+        where: {
+          createdAt: { gte: twentyFourHoursAgo },
+          isSuccess: false,
+        },
+      }),
+      db.systemErrorLog.count({ where: { createdAt: { gte: twentyFourHoursAgo } } }),
+      db.systemErrorLog.count({ where: { isResolved: false } }),
+    ]);
+    const recentErrors = recentAiErrors + recentSystemErrors;
 
     return Response.json({
       userStats: {
@@ -148,6 +157,7 @@ export async function GET(request: NextRequest) {
         successRate: aiSuccessRate,
         tokensUsed: tokensUsed._sum.tokensUsed || 0,
       },
+      visitorStats,
       recentRegistrations,
       usageByDay,
       systemHealth: {
@@ -155,10 +165,12 @@ export async function GET(request: NextRequest) {
         activeApiKeys,
         totalApiKeys,
         recentErrors,
+        unresolvedSystemErrors,
       },
     });
   } catch (error) {
     console.error('Error fetching admin stats:', error);
+    await logSystemError({ request, error, source: 'api.admin.stats' });
     return Response.json(
       { error: 'حدث خطأ أثناء جلب الإحصائيات' },
       { status: 500 }

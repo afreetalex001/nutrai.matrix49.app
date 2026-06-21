@@ -210,8 +210,8 @@ const MODELS: Record<string, ModelMeta> = {
   },
   aiProvider: {
     table: 'AiProvider',
-    boolFields: ['isActive'],
-    dateFields: ['createdAt', 'updatedAt'],
+    boolFields: ['isActive', 'isDeleted'],
+    dateFields: ['deletedAt', 'createdAt', 'updatedAt'],
     relations: {
       apiKeys: { type: 'many', model: 'aiApiKey', foreignKey: 'providerId', owner: 'related' },
       usageLogs: { type: 'many', model: 'aiUsageLog', foreignKey: 'providerId', owner: 'related' },
@@ -270,6 +270,21 @@ const MODELS: Record<string, ModelMeta> = {
     table: 'SystemSettings',
     uniques: ['key'],
     dateFields: ['createdAt', 'updatedAt'],
+  },
+
+  siteVisitor: {
+    table: 'SiteVisitor',
+    uniques: ['visitorId'],
+    dateFields: ['firstSeenAt', 'lastSeenAt', 'createdAt', 'updatedAt'],
+  },
+  systemErrorLog: {
+    table: 'SystemErrorLog',
+    boolFields: ['isResolved'],
+    dateFields: ['resolvedAt', 'createdAt', 'updatedAt'],
+    jsonFields: ['metadata'],
+    relations: {
+      user: { type: 'one', model: 'user', foreignKey: 'userId', owner: 'self' },
+    },
   },
 };
 
@@ -1337,6 +1352,8 @@ export const db = {
   landingPageSection: new ModelAdapter('landingPageSection', MODELS.landingPageSection),
   landingPageItem: new ModelAdapter('landingPageItem', MODELS.landingPageItem),
   systemSettings: new ModelAdapter('systemSettings', MODELS.systemSettings),
+  siteVisitor: new ModelAdapter('siteVisitor', MODELS.siteVisitor),
+  systemErrorLog: new ModelAdapter('systemErrorLog', MODELS.systemErrorLog),
 };
 
 export { query, queryRaw, execute, executeRaw, transaction, generateId };

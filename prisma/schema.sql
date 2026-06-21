@@ -241,6 +241,10 @@ CREATE TABLE IF NOT EXISTS `AiProvider` (
   `name` VARCHAR(50) NOT NULL,
   `displayName` VARCHAR(100) NOT NULL,
   `baseUrl` TEXT NULL,
+  `configJson` LONGTEXT NULL,
+  `isCustom` TINYINT(1) NOT NULL DEFAULT 0,
+  `isDeleted` TINYINT(1) NOT NULL DEFAULT 0,
+  `deletedAt` DATETIME(3) NULL,
   `isActive` TINYINT(1) NOT NULL DEFAULT 1,
   `priority` INT NOT NULL DEFAULT 0,
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -378,6 +382,55 @@ CREATE TABLE IF NOT EXISTS `SystemSettings` (
   `value` TEXT NOT NULL,
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- 20. SiteVisitor — زوار الموقع الفريدون
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `SiteVisitor` (
+  `id` VARCHAR(24) NOT NULL PRIMARY KEY,
+  `visitorId` VARCHAR(100) NOT NULL UNIQUE,
+  `ipHash` CHAR(64) NULL,
+  `userAgent` VARCHAR(500) NULL,
+  `firstSeenAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `lastSeenAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `lastPath` VARCHAR(500) NULL,
+  `referrer` VARCHAR(500) NULL,
+  `visitCount` INT NOT NULL DEFAULT 1,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  INDEX `IDX_SiteVisitor_lastSeenAt` (`lastSeenAt`),
+  INDEX `IDX_SiteVisitor_firstSeenAt` (`firstSeenAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 21. SystemErrorLog — سجل أخطاء المنصة
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `SystemErrorLog` (
+  `id` VARCHAR(24) NOT NULL PRIMARY KEY,
+  `level` VARCHAR(20) NOT NULL DEFAULT 'error',
+  `source` VARCHAR(120) NOT NULL,
+  `message` TEXT NOT NULL,
+  `stack` LONGTEXT NULL,
+  `explanation` TEXT NULL,
+  `path` VARCHAR(500) NULL,
+  `method` VARCHAR(10) NULL,
+  `userId` VARCHAR(24) NULL,
+  `userRole` VARCHAR(30) NULL,
+  `ipHash` CHAR(64) NULL,
+  `userAgent` VARCHAR(500) NULL,
+  `metadata` JSON NULL,
+  `isResolved` TINYINT(1) NOT NULL DEFAULT 0,
+  `resolvedAt` DATETIME(3) NULL,
+  `resolvedById` VARCHAR(24) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  INDEX `IDX_SystemErrorLog_createdAt` (`createdAt`),
+  INDEX `IDX_SystemErrorLog_source` (`source`),
+  INDEX `IDX_SystemErrorLog_isResolved` (`isResolved`),
+  INDEX `IDX_SystemErrorLog_userId` (`userId`),
+  CONSTRAINT `FK_SystemErrorLog_user` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
@@ -81,6 +82,8 @@ interface AiProviderWithStats {
   name: string;
   displayName: string;
   baseUrl: string | null;
+  configJson?: string | null;
+  isCustom?: boolean;
   isActive: boolean;
   priority: number;
   createdAt: string;
@@ -103,17 +106,40 @@ export default function AiProvidersPage() {
   const [addKeyOpen, setAddKeyOpen] = useState(false);
   const [editKeyOpen, setEditKeyOpen] = useState(false);
   const [deleteKeyOpen, setDeleteKeyOpen] = useState(false);
+  const [deleteProviderOpen, setDeleteProviderOpen] = useState(false);
+  const [testingCustom, setTestingCustom] = useState(false);
+  const [customTestResult, setCustomTestResult] = useState<string>('');
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
+  const [selectedProvider, setSelectedProvider] = useState<AiProviderWithStats | null>(null);
   const [selectedKey, setSelectedKey] = useState<AiApiKey | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Form states
+  const defaultCustomConfig = JSON.stringify({
+    method: 'POST',
+    url: 'https://api.example.com/v1/chat/completions',
+    headers: {
+      Authorization: 'Bearer {{apiKey}}',
+      'Content-Type': 'application/json',
+    },
+    body: {
+      model: '{{model}}',
+      messages: '{{messages}}',
+    },
+    responsePath: 'choices.0.message.content',
+    tokensPath: 'usage.total_tokens',
+  }, null, 2);
+
   const [providerForm, setProviderForm] = useState({
     name: '',
     displayName: '',
     baseUrl: '',
     priority: 0,
     isActive: true,
+    isCustom: false,
+    configJson: '',
+    apiKey: '',
+    model: '',
   });
   const [keyForm, setKeyForm] = useState({
     providerId: '',
@@ -170,7 +196,12 @@ export default function AiProvidersPage() {
           baseUrl: '',
           priority: 0,
           isActive: true,
+          isCustom: false,
+          configJson: '',
+          apiKey: '',
+          model: '',
         });
+        setCustomTestResult('');
         fetchProviders();
       } else {
         const data = await res.json();
@@ -180,6 +211,46 @@ export default function AiProvidersPage() {
       console.error('Error adding provider:', error);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openCustomProviderDialog = () => {
+    setCustomTestResult('');
+    setProviderForm({
+      name: 'custom-' + Date.now(),
+      displayName: 'مزود مخصص',
+      baseUrl: '',
+      priority: providers.length,
+      isActive: true,
+      isCustom: true,
+      configJson: defaultCustomConfig,
+      apiKey: '',
+      model: '',
+    });
+    setAddProviderOpen(true);
+  };
+
+  const handleTestCustomProvider = async () => {
+    setTestingCustom(true);
+    setCustomTestResult('');
+    try {
+      const res = await fetch('/api/admin/ai-providers/test', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          configJson: providerForm.configJson,
+          baseUrl: providerForm.baseUrl,
+          apiKey: providerForm.apiKey,
+          model: providerForm.model,
+          testPrompt: 'اختبار اتصال مختصر',
+        }),
+      });
+      const data = await res.json();
+      setCustomTestResult(res.ok ? `نجح الاختبار: ${data.result?.content || 'تم الاتصال'}` : `فشل الاختبار: ${data.error}`);
+    } catch (error) {
+      setCustomTestResult('فشل الاتصال أثناء الاختبار');
+    } finally {
+      setTestingCustom(false);
     }
   };
 
@@ -306,6 +377,29 @@ export default function AiProvidersPage() {
     }
   };
 
+  const handleDeleteProvider = async () => {
+    if (!selectedProvider) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/ai-providers?providerId=${selectedProvider.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setDeleteProviderOpen(false);
+        setSelectedProvider(null);
+        fetchProviders();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'فشل حذف المزود');
+      }
+    } catch (error) {
+      console.error('Error deleting provider:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDeleteKey = async () => {
     if (!selectedKey) return;
     setSaving(true);
@@ -413,7 +507,18 @@ export default function AiProvidersPage() {
           </Button>
           <Button
             size="sm"
-            onClick={() => setAddProviderOpen(true)}
+            onClick={openCustomProviderDialog}
+            className="gap-1.5 text-xs bg-teal-600 hover:bg-teal-700"
+          >
+            <Zap className="size-3.5" />
+            مزود مخصص
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setProviderForm({ name: '', displayName: '', baseUrl: '', priority: 0, isActive: true, isCustom: false, configJson: '', apiKey: '', model: '' });
+              setAddProviderOpen(true);
+            }}
             className="gap-1.5 text-xs bg-slate-600 hover:bg-slate-700"
           >
             <Plus className="size-3.5" />
@@ -547,6 +652,18 @@ export default function AiProvidersPage() {
                             ) : (
                               <Power className="size-3.5 text-slate-600" />
                             )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProvider(provider);
+                              setDeleteProviderOpen(true);
+                            }}
+                          >
+                            <Trash2 className="size-3.5 text-red-600" />
                           </Button>
                           {expandedProvider === provider.id ? (
                             <ChevronUp className="size-4 text-muted-foreground mr-1" />
@@ -806,6 +923,39 @@ export default function AiProvidersPage() {
             </div>
             <div className="flex items-center gap-2">
               <Switch
+                checked={providerForm.isCustom}
+                onCheckedChange={(checked) =>
+                  setProviderForm({ ...providerForm, isCustom: checked, configJson: checked && !providerForm.configJson ? defaultCustomConfig : providerForm.configJson })
+                }
+                className="data-[state=checked]:bg-teal-600"
+              />
+              <Label className="text-sm">مزود مخصص بإعدادات JSON آمنة</Label>
+            </div>
+            {providerForm.isCustom && (
+              <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-sm">API Key</Label>
+                    <Input value={providerForm.apiKey} onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })} dir="ltr" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Model</Label>
+                    <Input value={providerForm.model} onChange={(e) => setProviderForm({ ...providerForm, model: e.target.value })} dir="ltr" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">JSON Template</Label>
+                  <Textarea value={providerForm.configJson} onChange={(e) => setProviderForm({ ...providerForm, configJson: e.target.value })} dir="ltr" className="min-h-[220px] font-mono text-xs" />
+                  <p className="text-[11px] text-muted-foreground">استخدم placeholders: {{apiKey}} و {{model}} و {{messages}}. لا يتم تشغيل JavaScript حر لأسباب أمنية.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleTestCustomProvider} disabled={testingCustom || !providerForm.apiKey || !providerForm.model || !providerForm.configJson} className="text-xs">
+                  {testingCustom ? 'جارٍ الاختبار...' : 'اختبار المزود'}
+                </Button>
+                {customTestResult && <p className={`text-xs ${customTestResult.startsWith('نجح') ? 'text-emerald-700' : 'text-red-700'}`}>{customTestResult}</p>}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Switch
                 checked={providerForm.isActive}
                 onCheckedChange={(checked) =>
                   setProviderForm({ ...providerForm, isActive: checked })
@@ -826,7 +976,7 @@ export default function AiProvidersPage() {
             <Button
               onClick={handleAddProvider}
               disabled={
-                saving || !providerForm.name || !providerForm.displayName
+                saving || !providerForm.name || !providerForm.displayName || (providerForm.isCustom && (!providerForm.apiKey || !providerForm.model || !providerForm.configJson))
               }
               className="text-xs bg-slate-600 hover:bg-slate-700"
             >
@@ -1002,6 +1152,24 @@ export default function AiProvidersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Provider Alert Dialog */}
+      <AlertDialog open={deleteProviderOpen} onOpenChange={setDeleteProviderOpen}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف مزود الذكاء الاصطناعي</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيتم تعطيل المزود وإخفاؤه من القائمة مع تعطيل مفاتيحه للحفاظ على سجلات الاستخدام. هل تريد حذف &quot;{selectedProvider?.displayName}&quot;؟
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs">إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteProvider} disabled={saving} className="text-xs bg-red-600 hover:bg-red-700">
+              {saving ? 'جارٍ الحذف...' : 'حذف المزود'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete API Key Alert Dialog */}
       <AlertDialog open={deleteKeyOpen} onOpenChange={setDeleteKeyOpen}>

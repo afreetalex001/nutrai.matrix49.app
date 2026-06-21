@@ -4,12 +4,15 @@
 // ============================================================
 
 import { db } from '@/lib/db';
+import { callCustomAiProvider } from '@/lib/custom-ai-provider';
 
 export interface AiProviderConfig {
   id: string;
   name: string;
   displayName: string;
   baseUrl?: string;
+  configJson?: string | null;
+  isCustom?: boolean;
   priority: number;
   apiKeys: AiApiKeyConfig[];
 }
@@ -287,7 +290,7 @@ async function callClaude(
  */
 async function getActiveProvidersWithKeys(): Promise<AiProviderConfig[]> {
   const providers = await db.aiProvider.findMany({
-    where: { isActive: true },
+    where: { isActive: true, isDeleted: false },
     include: {
       apiKeys: {
         where: { isActive: true },
@@ -302,6 +305,8 @@ async function getActiveProvidersWithKeys(): Promise<AiProviderConfig[]> {
     name: p.name,
     displayName: p.displayName,
     baseUrl: p.baseUrl || undefined,
+    configJson: p.configJson || undefined,
+    isCustom: p.isCustom || p.name === 'custom',
     priority: p.priority,
     apiKeys: p.apiKeys.map(k => ({
       id: k.id,
@@ -353,8 +358,20 @@ async function callProviderWithTimeout(
           case 'claude':
             result = await callClaude(apiKeyConfig.apiKey, apiKeyConfig.model, messages, provider.baseUrl, options);
             break;
+          case 'custom':
+            result = await callCustomAiProvider({
+              configJson: provider.configJson,
+              baseUrl: provider.baseUrl,
+              apiKey: apiKeyConfig.apiKey,
+              model: apiKeyConfig.model,
+              messages,
+              options,
+            });
+            break;
           default:
-            result = await callOpenAI(apiKeyConfig.apiKey, apiKeyConfig.model, messages, provider.baseUrl, options);
+            result = provider.isCustom || provider.configJson
+              ? await callCustomAiProvider({ configJson: provider.configJson, baseUrl: provider.baseUrl, apiKey: apiKeyConfig.apiKey, model: apiKeyConfig.model, messages, options })
+              : await callOpenAI(apiKeyConfig.apiKey, apiKeyConfig.model, messages, provider.baseUrl, options);
         }
         clearTimeout(timer);
         resolve(result);
