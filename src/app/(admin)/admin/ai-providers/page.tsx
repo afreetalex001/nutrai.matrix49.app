@@ -946,7 +946,7 @@ export default function AiProvidersPage() {
                 <div className="space-y-2">
                   <Label className="text-sm">JSON Template</Label>
                   <Textarea value={providerForm.configJson} onChange={(e) => setProviderForm({ ...providerForm, configJson: e.target.value })} dir="ltr" className="min-h-[220px] font-mono text-xs" />
-                  <p className="text-[11px] text-muted-foreground">استخدم placeholders: {{apiKey}} و {{model}} و {{messages}}. لا يتم تشغيل JavaScript حر لأسباب أمنية.</p>
+                  <p className="text-[11px] text-muted-foreground">استخدم placeholders: {'{{apiKey}}'} و {'{{model}}'} و {'{{messages}}'}. لا يتم تشغيل JavaScript حر لأسباب أمنية.</p>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={handleTestCustomProvider} disabled={testingCustom || !providerForm.apiKey || !providerForm.model || !providerForm.configJson} className="text-xs">
                   {testingCustom ? 'جارٍ الاختبار...' : 'اختبار المزود'}
