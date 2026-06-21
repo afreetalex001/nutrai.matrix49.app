@@ -9,6 +9,7 @@ import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthUser, unauthorized, forbidden } from '@/lib/api-auth';
 import { calculateMacros } from '@/lib/macros';
+import { validatePatientPayload } from '@/lib/patient-validation';
 
 export async function GET(
   request: NextRequest,
@@ -51,7 +52,7 @@ export async function GET(
     }
 
     // Ensure the patient belongs to the authenticated doctor
-    if (patient.doctorId !== user.id && user.role !== 'admin') {
+    if (patient.doctorId !== user.id) {
       return forbidden();
     }
 
@@ -87,61 +88,38 @@ export async function PUT(
       );
     }
 
-    if (existingPatient.doctorId !== user.id && user.role !== 'admin') {
+    if (existingPatient.doctorId !== user.id) {
       return forbidden();
     }
 
     const body = await request.json();
-    const {
-      name,
-      email,
-      phone,
-      gender,
-      dateOfBirth,
-      age,
-      height,
-      weight,
-      activityLevel,
-      goal,
-      medicalNotes,
-      inBodyData,
-    } = body;
+    const validation = validatePatientPayload(body, 'update');
+    if (!validation.ok) {
+      return Response.json({ error: validation.error }, { status: 400 });
+    }
 
-    // Build update data
-    const updateData: Record<string, unknown> = {};
-
-    if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email || null;
-    if (phone !== undefined) updateData.phone = phone || null;
-    if (gender !== undefined) updateData.gender = gender || null;
-    if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
-    if (age !== undefined) updateData.age = age || null;
-    if (height !== undefined) updateData.height = height ? parseFloat(height) : null;
-    if (weight !== undefined) updateData.weight = weight ? parseFloat(weight) : null;
-    if (activityLevel !== undefined) updateData.activityLevel = activityLevel || null;
-    if (goal !== undefined) updateData.goal = goal || null;
-    if (medicalNotes !== undefined) updateData.medicalNotes = medicalNotes || null;
-    if (inBodyData !== undefined) updateData.inBodyData = inBodyData ? JSON.stringify(inBodyData) : null;
+    const updateData: Record<string, unknown> = { ...validation.data };
 
     // Check if we need to recalculate macros
+    const nextWeight = updateData.weight !== undefined ? updateData.weight : existingPatient.weight;
+    const nextHeight = updateData.height !== undefined ? updateData.height : existingPatient.height;
+    const nextAge = updateData.age !== undefined ? updateData.age : existingPatient.age;
+    const nextActivityLevel = updateData.activityLevel !== undefined ? updateData.activityLevel : existingPatient.activityLevel;
+    const nextGoal = updateData.goal !== undefined ? updateData.goal : existingPatient.goal;
+    const nextGender = updateData.gender !== undefined ? updateData.gender : existingPatient.gender;
+
     const shouldRecalculate =
-      (weight !== undefined || height !== undefined ||
-       age !== undefined || activityLevel !== undefined) &&
-      (weight !== undefined ? parseFloat(weight) : existingPatient.weight) &&
-      (height !== undefined ? parseFloat(height) : existingPatient.height) &&
-      (age !== undefined ? parseInt(age) : existingPatient.age) &&
-      (activityLevel !== undefined ? activityLevel : existingPatient.activityLevel) &&
-      (goal !== undefined ? goal : existingPatient.goal) &&
-      (gender !== undefined ? gender : existingPatient.gender);
+      ['weight', 'height', 'age', 'activityLevel', 'goal', 'gender'].some((key) => updateData[key] !== undefined) &&
+      nextWeight && nextHeight && nextAge && nextActivityLevel && nextGoal && nextGender;
 
     if (shouldRecalculate) {
       const metrics = {
-        weight: weight !== undefined ? parseFloat(weight) : existingPatient.weight!,
-        height: height !== undefined ? parseFloat(height) : existingPatient.height!,
-        age: age !== undefined ? parseInt(age) : existingPatient.age!,
-        gender: (gender !== undefined ? gender : existingPatient.gender) as 'male' | 'female',
-        activityLevel: (activityLevel !== undefined ? activityLevel : existingPatient.activityLevel) as 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active',
-        goal: (goal !== undefined ? goal : existingPatient.goal) as 'lose_weight' | 'gain_weight' | 'maintain' | 'build_muscle',
+        weight: nextWeight as number,
+        height: nextHeight as number,
+        age: nextAge as number,
+        gender: nextGender as 'male' | 'female',
+        activityLevel: nextActivityLevel as 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active',
+        goal: nextGoal as 'lose_weight' | 'gain_weight' | 'maintain' | 'build_muscle',
       };
 
       const macros = calculateMacros(metrics);
@@ -190,7 +168,7 @@ export async function DELETE(
       );
     }
 
-    if (patient.doctorId !== user.id && user.role !== 'admin') {
+    if (patient.doctorId !== user.id) {
       return forbidden();
     }
 

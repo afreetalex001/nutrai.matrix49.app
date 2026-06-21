@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error in AI chat:', error);
     const message = error instanceof Error ? error.message : 'حدث خطأ أثناء المحادثة مع الذكاء الاصطناعي';
-    return Response.json({ error: message }, { status: 500 });
+    const isConfigurationError = message.includes('لا توجد مفاتيح API فعالة') || message.includes('مزودي الذكاء الاصطناعي غير متاحين');
+    return Response.json({ error: message }, { status: isConfigurationError ? 503 : 500 });
   }
 }

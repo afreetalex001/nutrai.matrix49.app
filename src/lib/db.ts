@@ -482,13 +482,78 @@ function buildOrderBy(orderBy: unknown): string {
 
 // ============ Select Builder ============
 
-function buildSelect(select: Record<string, true> | undefined, meta: ModelMeta): string {
+function isScalarSelectValue(value: unknown): value is true {
+  return value === true;
+}
+
+/**
+ * Prisma-style select may contain relations, e.g.
+ * { id: true, subscription: { select: { status: true } }, _count: {...} }.
+ * Relations are NOT SQL columns, so they must never be projected directly.
+ * If relations/_count are requested we select * internally, load relations,
+ * then prune the result to the requested shape.
+ */
+function hasNestedSelect(select: Record<string, unknown> | undefined, meta: ModelMeta): boolean {
+  if (!select) return false;
+  return Object.entries(select).some(([key, value]) =>
+    key === '_count' || Boolean(meta.relations?.[key]) || !isScalarSelectValue(value)
+  );
+}
+
+function getScalarSelectFields(select: Record<string, unknown> | undefined, meta: ModelMeta): string[] {
+  if (!select) return [];
+  return Object.entries(select)
+    .filter(([key, value]) => key !== '_count' && !meta.relations?.[key] && isScalarSelectValue(value))
+    .map(([key]) => key);
+}
+
+function buildSelect(select: Record<string, unknown> | undefined, meta: ModelMeta): string {
   if (!select || Object.keys(select).length === 0) {
     return '*';
   }
-  const cols = Object.keys(select).filter((k) => k !== '_count');
+
+  // Need id/FKs to resolve relations and _count; prune after includes.
+  if (hasNestedSelect(select, meta)) return '*';
+
+  const cols = getScalarSelectFields(select, meta);
   if (cols.length === 0) return '*';
   return cols.map((c) => col(c)).join(', ');
+}
+
+function selectToInclude(modelName: string, select: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!select) return undefined;
+  const meta = MODELS[modelName];
+  const include: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(select)) {
+    if (key === '_count' || meta.relations?.[key]) include[key] = value === true ? {} : value;
+  }
+  return Object.keys(include).length ? include : undefined;
+}
+
+function pruneBySelect(modelName: string, row: any, select: Record<string, unknown> | undefined): any {
+  if (!select || !row) return row;
+  const meta = MODELS[modelName];
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(select)) {
+    if (key === '_count') {
+      out._count = row._count;
+      continue;
+    }
+    const rel = meta.relations?.[key];
+    if (rel) {
+      const relValue = row[key];
+      if (value === true) {
+        out[key] = relValue;
+      } else {
+        const nestedSelect = (value as { select?: Record<string, unknown> } | undefined)?.select;
+        if (Array.isArray(relValue)) out[key] = relValue.map((r) => pruneBySelect(rel.model, r, nestedSelect));
+        else out[key] = relValue ? pruneBySelect(rel.model, relValue, nestedSelect) : relValue;
+      }
+      continue;
+    }
+    if (value === true) out[key] = row[key];
+  }
+  return out;
 }
 
 // ============ Row Mapper ============
@@ -515,7 +580,7 @@ function mapRow(row: Record<string, unknown>, meta: ModelMeta, selectFields?: Se
 interface FindArgs {
   where?: Record<string, unknown>;
   include?: Record<string, unknown>;
-  select?: Record<string, true>;
+  select?: Record<string, unknown>;
   orderBy?: unknown;
   skip?: number;
   take?: number;
@@ -525,7 +590,7 @@ interface FindArgs {
 interface CreateArgs {
   data: Record<string, unknown>;
   include?: Record<string, unknown>;
-  select?: Record<string, true>;
+  select?: Record<string, unknown>;
 }
 
 interface CreateManyArgs {
@@ -537,7 +602,7 @@ interface UpdateArgs {
   where: Record<string, unknown>;
   data: Record<string, unknown>;
   include?: Record<string, unknown>;
-  select?: Record<string, true>;
+  select?: Record<string, unknown>;
 }
 
 interface UpdateManyArgs {
@@ -550,12 +615,12 @@ interface UpsertArgs {
   update: Record<string, unknown>;
   create: Record<string, unknown>;
   include?: Record<string, unknown>;
-  select?: Record<string, true>;
+  select?: Record<string, unknown>;
 }
 
 interface DeleteArgs {
   where: Record<string, unknown>;
-  select?: Record<string, true>;
+  select?: Record<string, unknown>;
 }
 
 interface DeleteManyArgs {
@@ -657,7 +722,17 @@ class ModelAdapter {
         const sql = `SELECT ${selectClause} FROM ${table(relatedMeta.table)}`;
         const finalSql = whereClause.sql ? `${sql} WHERE ${whereClause.sql} LIMIT 1` : `${sql} LIMIT 1`;
         const rows = await query<RowDataPacket[]>(finalSql, whereClause.params);
-        row[relName] = rows[0] ? mapRow(rows[0] as Record<string, unknown>, relatedMeta, opts.select ? new Set(Object.keys(opts.select)) : undefined) : null;
+        if (rows[0]) {
+          const selectFields = opts.select && !hasNestedSelect(opts.select, relatedMeta)
+            ? new Set(getScalarSelectFields(opts.select, relatedMeta))
+            : undefined;
+          let relRow: any = mapRow(rows[0] as Record<string, unknown>, relatedMeta, selectFields);
+          relRow = await relatedAdapter.applyIncludes(relRow, opts.include);
+          relRow = await relatedAdapter.applyIncludes(relRow, selectToInclude(rel.model, opts.select));
+          row[relName] = pruneBySelect(rel.model, relRow, opts.select);
+        } else {
+          row[relName] = null;
+        }
       } else {
         // تحميل علاقة one-to-many
         const fkValue = row['id'];
@@ -679,7 +754,17 @@ class ModelAdapter {
         if (offset) sql += ` ${offset}`;
 
         const rows = await query<RowDataPacket[]>(sql, whereClause.params);
-        row[relName] = rows.map((r) => mapRow(r as Record<string, unknown>, relatedMeta, opts.select ? new Set(Object.keys(opts.select)) : undefined));
+        const selectFields = opts.select && !hasNestedSelect(opts.select, relatedMeta)
+          ? new Set(getScalarSelectFields(opts.select, relatedMeta))
+          : undefined;
+        const relRows: any[] = [];
+        for (const r of rows) {
+          let relRow: any = mapRow(r as Record<string, unknown>, relatedMeta, selectFields);
+          relRow = await relatedAdapter.applyIncludes(relRow, opts.include);
+          relRow = await relatedAdapter.applyIncludes(relRow, selectToInclude(rel.model, opts.select));
+          relRows.push(pruneBySelect(rel.model, relRow, opts.select));
+        }
+        row[relName] = relRows;
       }
     }
 
@@ -701,8 +786,13 @@ class ModelAdapter {
     const rows = await query<RowDataPacket[]>(sql, whereClause.params);
     if (rows.length === 0) return null;
 
-    const row = mapRow(rows[0] as Record<string, unknown>, this.meta, args.select ? new Set(Object.keys(args.select)) : undefined);
-    return this.applyIncludes(row, args.include);
+    const selectFields = args.select && !hasNestedSelect(args.select, this.meta)
+      ? new Set(getScalarSelectFields(args.select, this.meta))
+      : undefined;
+    const row = mapRow(rows[0] as Record<string, unknown>, this.meta, selectFields);
+    let result = await this.applyIncludes(row, args.include);
+    result = await this.applyIncludes(result, selectToInclude(this.name, args.select));
+    return pruneBySelect(this.name, result, args.select);
   }
 
   async findFirst(args: FindArgs = {}): Promise<any> {
@@ -718,8 +808,13 @@ class ModelAdapter {
     const rows = await query<RowDataPacket[]>(sql, whereClause.params);
     if (rows.length === 0) return null;
 
-    const row = mapRow(rows[0] as Record<string, unknown>, this.meta, args.select ? new Set(Object.keys(args.select)) : undefined);
-    return this.applyIncludes(row, args.include);
+    const selectFields = args.select && !hasNestedSelect(args.select, this.meta)
+      ? new Set(getScalarSelectFields(args.select, this.meta))
+      : undefined;
+    const row = mapRow(rows[0] as Record<string, unknown>, this.meta, selectFields);
+    let result = await this.applyIncludes(row, args.include);
+    result = await this.applyIncludes(result, selectToInclude(this.name, args.select));
+    return pruneBySelect(this.name, result, args.select);
   }
 
   async findMany(args: FindArgs = {}): Promise<any[]> {
@@ -744,14 +839,20 @@ class ModelAdapter {
     }
 
     const rows = await query<RowDataPacket[]>(sql, whereClause.params);
-    const selectFields = args.select ? new Set(Object.keys(args.select)) : undefined;
+    const selectFields = args.select && !hasNestedSelect(args.select, this.meta)
+      ? new Set(getScalarSelectFields(args.select, this.meta))
+      : undefined;
     const mapped = rows.map((r) => mapRow(r as Record<string, unknown>, this.meta, selectFields));
 
-    // تطبيق includes
-    if (args.include) {
+    // تطبيق includes و nested select relations
+    if (args.include || args.select) {
       const withIncludes: any[] = [];
+      const selectIncludes = selectToInclude(this.name, args.select);
       for (const row of mapped) {
-        withIncludes.push((await this.applyIncludes(row, args.include))!);
+        let item = row;
+        item = (await this.applyIncludes(item, args.include))!;
+        item = (await this.applyIncludes(item, selectIncludes))!;
+        withIncludes.push(pruneBySelect(this.name, item, args.select));
       }
       return withIncludes;
     }

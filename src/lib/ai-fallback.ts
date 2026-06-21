@@ -400,7 +400,7 @@ export async function chatWithFallback(
   }
 
   if (allKeyConfigs.length === 0) {
-    throw new Error('لا يوجد مزودو ذكاء اصطناعي نشطون. يرجى التواصل مع الإدارة.');
+    throw new Error('لا توجد مفاتيح API فعالة لأي مزود ذكاء اصطناعي. يرجى إضافة مفتاح من لوحة الإدارة.');
   }
 
   console.log(`[AI Parallel] Firing ${allKeyConfigs.length} keys in parallel across ${providers.length} providers...`);

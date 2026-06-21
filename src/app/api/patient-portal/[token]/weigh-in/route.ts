@@ -16,15 +16,17 @@ export async function POST(
     if (!validated) return portalInvalidToken();
     if (!validated.tokenRecord.canSubmitWeight) return portalForbidden('إضافة الوزن غير مسموحة بهذا الرابط');
 
-    const body = await request.json();
-    const weight = parseFloat(body.weight);
-    const bodyFat = body.bodyFat ? parseFloat(body.bodyFat) : null;
-    const note = body.note ? String(body.note).trim().substring(0, 500) : null;
+    const body = await request.json().catch(() => ({}));
+    const weight = typeof body.weight === 'number' ? body.weight : parseFloat(String(body.weight ?? ''));
+    const bodyFat = body.bodyFat === undefined || body.bodyFat === null || body.bodyFat === ''
+      ? null
+      : (typeof body.bodyFat === 'number' ? body.bodyFat : parseFloat(String(body.bodyFat)));
+    const note = body.note ? String(body.note).replace(/[\u0000-\u001F\u007F]/g, '').trim().substring(0, 500) : null;
 
-    if (!weight || weight < 20 || weight > 400) {
+    if (!Number.isFinite(weight) || weight < 20 || weight > 400) {
       return Response.json({ error: 'يرجى إدخال وزن صحيح بين 20 و 400 كجم' }, { status: 400 });
     }
-    if (bodyFat !== null && (bodyFat < 1 || bodyFat > 70)) {
+    if (bodyFat !== null && (!Number.isFinite(bodyFat) || bodyFat < 1 || bodyFat > 70)) {
       return Response.json({ error: 'نسبة الدهون يجب أن تكون بين 1 و 70%' }, { status: 400 });
     }
 

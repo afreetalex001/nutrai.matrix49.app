@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthUser, unauthorized } from '@/lib/api-auth';
 import { calculateMacros } from '@/lib/macros';
+import { validatePatientPayload } from '@/lib/patient-validation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,85 +73,29 @@ export async function POST(request: NextRequest) {
     if (!user) return unauthorized();
 
     const body = await request.json();
-    const {
-      name,
-      email,
-      phone,
-      gender,
-      dateOfBirth,
-      age,
-      height,
-      weight,
-      activityLevel,
-      goal,
-      medicalNotes,
-      inBodyData,
-    } = body;
-
-    // Validate required fields
-    if (!name) {
-      return Response.json(
-        { error: 'اسم المريض مطلوب' },
-        { status: 400 }
-      );
+    const validation = validatePatientPayload(body, 'create');
+    if (!validation.ok) {
+      return Response.json({ error: validation.error }, { status: 400 });
     }
-
-    // Auto-calculate age from dateOfBirth if not provided
-    let finalAge: number | null = age ? parseInt(age) : null;
-    if (!finalAge && dateOfBirth) {
-      const birthDate = new Date(dateOfBirth);
-      const today = new Date();
-      let calculatedAge = today.getFullYear() - birthDate.getFullYear();
-      const m = today.getMonth() - birthDate.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) calculatedAge--;
-      finalAge = calculatedAge;
-    }
-
-    // Build patient data
     const patientData: Record<string, unknown> = {
       doctorId: user.id,
-      name,
-      email: email || null,
-      phone: phone || null,
-      gender: gender || null,
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-      age: finalAge,
-      height: height ? parseFloat(height) : null,
-      weight: weight ? parseFloat(weight) : null,
-      activityLevel: activityLevel || null,
-      goal: goal || null,
-      medicalNotes: medicalNotes || null,
-      inBodyData: inBodyData ? JSON.stringify(inBodyData) : null,
+      ...validation.data,
     };
 
-    // Check for custom macros from body
-    const { customMacros } = body;
-    if (customMacros && typeof customMacros === 'object') {
-      // Use doctor-approved custom macros
-      if (customMacros.caloriesTarget !== undefined) patientData.caloriesTarget = parseFloat(customMacros.caloriesTarget);
-      if (customMacros.proteinTarget !== undefined) patientData.proteinTarget = parseFloat(customMacros.proteinTarget);
-      if (customMacros.carbsTarget !== undefined) patientData.carbsTarget = parseFloat(customMacros.carbsTarget);
-      if (customMacros.fatsTarget !== undefined) patientData.fatsTarget = parseFloat(customMacros.fatsTarget);
-      if (customMacros.waterTarget !== undefined) patientData.waterTarget = parseFloat(customMacros.waterTarget);
-    } else if (
-      weight &&
-      height &&
-      finalAge &&
-      gender &&
-      activityLevel &&
-      goal
-    ) {
-      // Auto-calculate macros if we have enough data and no custom macros
-      const metrics = {
-        weight: parseFloat(weight),
-        height: parseFloat(height),
-        age: finalAge,
-        gender,
-        activityLevel,
-        goal,
-      };
+    // Auto-calculate macros if no custom macros were supplied and data is complete
+    const hasCustomMacros = ['caloriesTarget', 'proteinTarget', 'carbsTarget', 'fatsTarget', 'waterTarget']
+      .some((key) => patientData[key] !== undefined && patientData[key] !== null);
 
-      const macros = calculateMacros(metrics);
+    if (!hasCustomMacros && patientData.weight && patientData.height && patientData.age &&
+        patientData.gender && patientData.activityLevel && patientData.goal) {
+      const macros = calculateMacros({
+        weight: patientData.weight as number,
+        height: patientData.height as number,
+        age: patientData.age as number,
+        gender: patientData.gender as 'male' | 'female',
+        activityLevel: patientData.activityLevel as 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active',
+        goal: patientData.goal as 'lose_weight' | 'gain_weight' | 'maintain' | 'build_muscle',
+      });
       patientData.caloriesTarget = macros.caloriesTarget;
       patientData.proteinTarget = macros.proteinTarget;
       patientData.carbsTarget = macros.carbsTarget;

@@ -10,6 +10,21 @@ import { randomBytes } from 'crypto';
 import { db } from '@/lib/db';
 import { getAuthUser, unauthorized, forbidden } from '@/lib/api-auth';
 
+
+function getPublicBaseUrl(request: NextRequest): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || process.env.SITE_URL || process.env.PUBLIC_BASE_URL;
+  if (configured) return configured.replace(/\/$/, '');
+
+  const proto = request.headers.get('x-forwarded-proto') || 'https';
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+  if (host && !host.startsWith('0.0.0.0') && !host.startsWith('localhost')) {
+    return `${proto}://${host}`.replace(/\/$/, '');
+  }
+
+  // Production fallback for this deployment; prevents leaking 0.0.0.0:3000 to patients.
+  return 'https://nutrai.matrix49.app';
+}
+
 function generateToken(): string {
   // 32 بايت = 64 حرف hex - آمن وغير قابل للتخمين
   return randomBytes(32).toString('hex');
@@ -37,7 +52,7 @@ export async function GET(
     });
 
     // أضف رابط كامل لكل توكن
-    const baseUrl = request.nextUrl.origin;
+    const baseUrl = getPublicBaseUrl(request);
     const tokensWithUrls = tokens.map(t => ({
       ...t,
       url: `${baseUrl}/portal/${t.token}`,
@@ -91,7 +106,7 @@ export async function POST(
       },
     });
 
-    const baseUrl = request.nextUrl.origin;
+    const baseUrl = getPublicBaseUrl(request);
     return Response.json({
       message: 'تم إنشاء رابط مشاركة جديد',
       token: { ...created, url: `${baseUrl}/portal/${created.token}` },
