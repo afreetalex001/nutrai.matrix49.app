@@ -862,7 +862,7 @@ export default function AiProvidersPage() {
 
       {/* Add Provider Dialog */}
       <Dialog open={addProviderOpen} onOpenChange={setAddProviderOpen}>
-        <DialogContent className="max-w-md" dir="rtl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Cpu className="size-4 text-slate-600" />
@@ -965,7 +965,7 @@ export default function AiProvidersPage() {
               <Label className="text-sm">مفعل</Label>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75 pt-3 border-t">
             <Button
               variant="outline"
               onClick={() => setAddProviderOpen(false)}
