@@ -17,6 +17,7 @@ import {
   Menu,
   Paintbrush,
   AlertTriangle,
+  KeyRound,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import {
@@ -51,6 +52,7 @@ const adminNavItems = [
   { title: 'المستخدمين', href: '/admin/users', icon: Users },
   { title: 'مزودو الذكاء الاصطناعي', href: '/admin/ai-providers', icon: Cpu },
   { title: 'أخطاء المنصة', href: '/admin/errors', icon: AlertTriangle },
+  { title: 'الأمان والمدراء', href: '/admin/security', icon: KeyRound },
   { title: 'الاشتراكات', href: '/admin/subscriptions', icon: CreditCard },
   { title: 'إدارة المحتوى', href: '/admin/cms', icon: FileText },
   { title: 'إعدادات الصفحة الرئيسية', href: '/admin/landing', icon: Paintbrush },

@@ -75,6 +75,11 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.needsEmailVerification) {
+          localStorage.setItem('nutriclinic-pending-email', formData.email.trim());
+          router.push(`/verify-email?email=${encodeURIComponent(formData.email.trim())}`);
+          return;
+        }
         if (data.needsActivation) {
           setNeedsActivation(true);
           localStorage.setItem('nutriclinic-pending-email', formData.email.trim());
@@ -259,6 +264,10 @@ export default function LoginPage() {
           </Button>
         </motion.div>
       </form>
+
+      <div className="text-center mt-3">
+        <a href="/forgot-password" className="text-xs font-medium text-emerald-600 hover:underline">نسيت كلمة المرور؟</a>
+      </div>
 
       {/* Register link */}
       <motion.div

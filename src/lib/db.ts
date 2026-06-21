@@ -124,8 +124,8 @@ const MODELS: Record<string, ModelMeta> = {
   user: {
     table: 'User',
     uniques: ['email'],
-    boolFields: ['isActive'],
-    dateFields: ['createdAt', 'updatedAt'],
+    boolFields: ['isActive', 'emailVerified'],
+    dateFields: ['emailVerifiedAt', 'createdAt', 'updatedAt'],
     relations: {
       subscription: { type: 'one', model: 'subscription', foreignKey: 'userId', owner: 'related' },
       patients: { type: 'many', model: 'patient', foreignKey: 'doctorId', owner: 'related' },
@@ -276,6 +276,12 @@ const MODELS: Record<string, ModelMeta> = {
     table: 'SiteVisitor',
     uniques: ['visitorId'],
     dateFields: ['firstSeenAt', 'lastSeenAt', 'createdAt', 'updatedAt'],
+  },
+
+  verificationCode: {
+    table: 'VerificationCode',
+    boolFields: [],
+    dateFields: ['expiresAt', 'usedAt', 'createdAt', 'updatedAt'],
   },
   systemErrorLog: {
     table: 'SystemErrorLog',
@@ -1354,6 +1360,7 @@ export const db = {
   systemSettings: new ModelAdapter('systemSettings', MODELS.systemSettings),
   siteVisitor: new ModelAdapter('siteVisitor', MODELS.siteVisitor),
   systemErrorLog: new ModelAdapter('systemErrorLog', MODELS.systemErrorLog),
+  verificationCode: new ModelAdapter('verificationCode', MODELS.verificationCode),
 };
 
 export { query, queryRaw, execute, executeRaw, transaction, generateId };

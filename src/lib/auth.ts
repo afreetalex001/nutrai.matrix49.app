@@ -81,6 +81,7 @@ export async function registerDoctor(email: string, password: string, name: stri
       phone: phone || null,
       role: 'doctor',
       isActive: false, // غير مفعل - يحتاج موافقة الإدارة
+      emailVerified: false,
     },
   });
 
@@ -138,6 +139,10 @@ export async function loginUser(email: string, password: string) {
     },
   };
 
+  if (!user.emailVerified) {
+    return { ...result, needsEmailVerification: true };
+  }
+
   if (!user.isActive) {
     return { ...result, needsActivation: true };
   }
@@ -160,6 +165,8 @@ export async function getUserFromToken(token: string) {
       name: true,
       role: true,
       isActive: true,
+      emailVerified: true,
+      emailVerifiedAt: true,
       phone: true,
       clinicName: true,
       specialization: true,

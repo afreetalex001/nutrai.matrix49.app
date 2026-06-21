@@ -46,6 +46,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (result.needsEmailVerification) {
+      return NextResponse.json(
+        {
+          error: 'يرجى تأكيد بريدك الإلكتروني أولاً باستخدام كود OTP المرسل إليك.',
+          needsEmailVerification: true,
+          email: result.user.email,
+        },
+        { status: 403 }
+      );
+    }
+
     // If account needs activation, return 403 with token so user can check status
     if (result.needsActivation) {
       return NextResponse.json(

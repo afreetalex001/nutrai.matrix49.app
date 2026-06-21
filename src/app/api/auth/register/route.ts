@@ -5,11 +5,17 @@
 import { NextRequest } from 'next/server';
 import { registerDoctor } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { createAndSendOtp } from '@/lib/otp';
+import { verifyTurnstile } from '@/lib/turnstile';
+import { validatePasswordStrength } from '@/lib/password-policy';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, name, phone } = body;
+    const { email, password, name, phone, turnstileToken } = body;
+
+    const turnstile = await verifyTurnstile(request, turnstileToken);
+    if (!turnstile.ok) return Response.json({ error: turnstile.error }, { status: 400 });
 
     // Validate required fields
     if (!email || !password || !name) {
@@ -28,15 +34,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate password length
-    if (password.length < 6) {
-      return Response.json(
-        { error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' },
-        { status: 400 }
-      );
-    }
+    const passwordError = validatePasswordStrength(password);
+    if (passwordError) return Response.json({ error: passwordError }, { status: 400 });
 
-    const user = await registerDoctor(email, password, name, phone);
+    const user = await registerDoctor(email.toLowerCase().trim(), password, name, phone);
+    await createAndSendOtp(email, 'email_verification');
 
     // Create free trial subscription automatically
     try {
@@ -80,14 +82,14 @@ export async function POST(request: NextRequest) {
 
     return Response.json(
       {
-        message: 'تم التسجيل بنجاح. سيتم تفعيل حسابك بعد مراجعة الإدارة.',
+        message: 'تم التسجيل بنجاح. أرسلنا كود تأكيد إلى بريدك الإلكتروني.',
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
           isActive: user.isActive,
         },
-        token: user.token,
+        nextStep: 'verify_email',
       },
       { status: 201 }
     );

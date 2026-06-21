@@ -7,6 +7,9 @@ const PUBLIC_PATHS = [
   '/login',
   '/register',
   '/activation-pending',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
   '/portal', // صفحة دخول المريض
   '/download', // صفحة تنزيل APK
 ];
@@ -22,6 +25,9 @@ const PUBLIC_API_PATHS = [
   '/api/auth/register',
   '/api/auth/logout',
   '/api/auth/me',
+  '/api/auth/verify-email',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
   '/api/plans',
   '/api/seed',
   '/api/setup',

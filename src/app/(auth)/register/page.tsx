@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/lib/auth-store';
+import { PasswordStrength } from '@/components/password-strength';
+import { TurnstileWidget } from '@/components/turnstile-widget';
 
 interface FormErrors {
   name?: string;
@@ -33,6 +35,7 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
@@ -54,8 +57,8 @@ export default function RegisterPage() {
     // Password validation
     if (!formData.password) {
       newErrors.password = 'كلمة المرور مطلوبة';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل';
     }
 
     // Confirm password validation
@@ -99,6 +102,7 @@ export default function RegisterPage() {
           email: formData.email.trim(),
           password: formData.password,
           phone: formData.phone.trim() || undefined,
+          turnstileToken,
         }),
       });
 
@@ -109,12 +113,8 @@ export default function RegisterPage() {
         return;
       }
 
-      // Registration successful — store token and redirect to activation pending
-      if (data.token) {
-        setAuth(data.token, data.user);
-      }
       localStorage.setItem('nutriclinic-pending-email', formData.email.trim());
-      router.push('/activation-pending');
+      router.push(`/verify-email?email=${encodeURIComponent(formData.email.trim())}`);
     } catch {
       setApiError('تعذر الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
     } finally {
@@ -252,6 +252,7 @@ export default function RegisterPage() {
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+          <PasswordStrength password={formData.password} />
           <AnimatePresence>
             {errors.password && (
               <motion.p
@@ -337,6 +338,8 @@ export default function RegisterPage() {
             )}
           </AnimatePresence>
         </motion.div>
+
+        <TurnstileWidget onVerify={setTurnstileToken} />
 
         {/* Submit */}
         <motion.div

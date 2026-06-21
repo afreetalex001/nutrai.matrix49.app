@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS `User` (
   `phone` VARCHAR(50) NULL,
   `role` VARCHAR(20) NOT NULL DEFAULT 'doctor',
   `isActive` TINYINT(1) NOT NULL DEFAULT 0,
+  `emailVerified` TINYINT(1) NOT NULL DEFAULT 0,
+  `emailVerifiedAt` DATETIME(3) NULL,
   `avatar` TEXT NULL,
   `specialization` TEXT NULL,
   `clinicName` TEXT NULL,
@@ -431,6 +433,24 @@ CREATE TABLE IF NOT EXISTS `SystemErrorLog` (
   INDEX `IDX_SystemErrorLog_isResolved` (`isResolved`),
   INDEX `IDX_SystemErrorLog_userId` (`userId`),
   CONSTRAINT `FK_SystemErrorLog_user` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- 22. VerificationCode — أكواد OTP
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `VerificationCode` (
+  `id` VARCHAR(24) NOT NULL PRIMARY KEY,
+  `email` VARCHAR(255) NOT NULL,
+  `purpose` VARCHAR(50) NOT NULL,
+  `codeHash` CHAR(64) NOT NULL,
+  `attempts` INT NOT NULL DEFAULT 0,
+  `expiresAt` DATETIME(3) NOT NULL,
+  `usedAt` DATETIME(3) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  INDEX `IDX_VerificationCode_email_purpose` (`email`, `purpose`),
+  INDEX `IDX_VerificationCode_expiresAt` (`expiresAt`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -1,0 +1,16 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { TurnstileWidget } from '@/components/turnstile-widget';
+import { PasswordStrength } from '@/components/password-strength';
+
+export default function ResetPasswordPage() {
+  const router = useRouter();
+  const [email,setEmail]=useState('');
+  useEffect(() => { const params = new URLSearchParams(window.location.search); setEmail(params.get('email') || ''); }, []); const [code,setCode]=useState(''); const [newPassword,setNewPassword]=useState(''); const [confirm,setConfirm]=useState(''); const [turnstileToken,setTurnstileToken]=useState(''); const [loading,setLoading]=useState(false); const [msg,setMsg]=useState(''); const [err,setErr]=useState('');
+  const submit=async()=>{ if(newPassword!==confirm){setErr('كلمتا المرور غير متطابقتين');return;} setLoading(true);setErr('');setMsg(''); try{const res=await fetch('/api/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,code,newPassword,turnstileToken})}); const data=await res.json(); if(!res.ok)setErr(data.error); else{setMsg(data.message); setTimeout(()=>router.push('/login'),1200)}}finally{setLoading(false)}};
+  return <div className="space-y-5"><div className="text-center"><h1 className="text-2xl font-bold">إعادة تعيين كلمة المرور</h1><p className="text-sm text-muted-foreground mt-1">أدخل OTP وكلمة المرور الجديدة</p></div>{msg&&<div className="p-3 rounded-lg bg-emerald-50 text-emerald-700 text-sm">{msg}</div>}{err&&<div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm">{err}</div>}<div className="space-y-2"><Label>البريد الإلكتروني</Label><Input dir="ltr" value={email} onChange={(e)=>setEmail(e.target.value)}/></div><div className="space-y-2"><Label>OTP</Label><Input dir="ltr" value={code} onChange={(e)=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} className="text-center tracking-[0.5em]"/></div><div className="space-y-2"><Label>كلمة المرور الجديدة</Label><Input dir="ltr" type="password" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)}/><PasswordStrength password={newPassword}/></div><div className="space-y-2"><Label>تأكيد كلمة المرور</Label><Input dir="ltr" type="password" value={confirm} onChange={(e)=>setConfirm(e.target.value)}/></div><TurnstileWidget onVerify={setTurnstileToken}/><Button className="w-full" disabled={loading||!email||code.length!==6||!newPassword} onClick={submit}>{loading?'جارٍ الحفظ...':'تغيير كلمة المرور'}</Button></div>;
+}
