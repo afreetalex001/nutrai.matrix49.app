@@ -48,6 +48,12 @@ export interface ChatOptions {
   maxOutputTokens?: number;
   temperature?: number;
   jsonMode?: boolean;
+  /**
+   * parallel = أسرع رد من أي مفتاح (مناسب للشات)
+   * sequential = احترام أولوية المزود، مناسب للخطط الطبية حيث الجودة أهم من السرعة
+   */
+  executionMode?: 'parallel' | 'sequential';
+  timeoutMs?: number;
 }
 
 // ====== أنواع الأخطاء التي تؤدي للتبديل ======
@@ -420,10 +426,45 @@ export async function chatWithFallback(
     throw new Error('لا توجد مفاتيح API فعالة لأي مزود ذكاء اصطناعي. يرجى إضافة مفتاح من لوحة الإدارة.');
   }
 
-  console.log(`[AI Parallel] Firing ${allKeyConfigs.length} keys in parallel across ${providers.length} providers...`);
-
   const startTimeOverall = Date.now();
   const failedKeys: Array<{ provider: string; model: string; error: string }> = [];
+
+  if (options?.executionMode === 'sequential') {
+    console.log(`[AI Sequential] Trying ${allKeyConfigs.length} keys by provider priority for ${requestType}...`);
+    for (const { provider, key, index } of allKeyConfigs) {
+      const startTime = Date.now();
+      try {
+        const result = await callProviderWithTimeout(provider, key, messages, options, options?.timeoutMs || 70000);
+        const responseTime = Date.now() - startTime;
+        const fr = String(result.finishReason || '').toUpperCase();
+        const truncated = ['MAX_TOKENS', 'LENGTH', 'STOP_SEQUENCE'].includes(fr) && fr !== 'STOP';
+        await db.aiApiKey.update({ where: { id: key.id }, data: { quotaUsed: { increment: 1 } } });
+        await db.aiUsageLog.create({ data: { apiKeyId: key.id, providerId: provider.id, userId, requestType, tokensUsed: result.tokensUsed, isSuccess: true, responseTime } });
+        return {
+          content: result.content,
+          providerUsed: provider.displayName,
+          modelUsed: key.model,
+          tokensUsed: result.tokensUsed,
+          responseTime: Date.now() - startTimeOverall,
+          fallbackOccurred: index > 0,
+          fallbackReason: index > 0 ? 'Sequential fallback to next provider/key' : undefined,
+          truncated,
+          finishReason: result.finishReason,
+        };
+      } catch (error) {
+        const responseTime = Date.now() - startTime;
+        const errorMsg = String(error).substring(0, 500);
+        failedKeys.push({ provider: provider.displayName, model: key.model, error: errorMsg });
+        await db.aiUsageLog.create({ data: { apiKeyId: key.id, providerId: provider.id, userId, requestType, tokensUsed: 0, isSuccess: false, errorMessage: errorMsg, responseTime } });
+        await db.aiApiKey.update({ where: { id: key.id }, data: { lastError: errorMsg, lastErrorAt: new Date() } });
+        console.warn(`[AI Sequential] ❌ Key #${index} (${provider.displayName}/${key.model}) failed: ${errorMsg.substring(0, 120)}`);
+      }
+    }
+    const errorSummary = failedKeys.map(f => `• ${f.provider} (${f.model}): ${f.error.substring(0, 100)}`).join('\n');
+    throw new Error(`جميع مزودي الذكاء الاصطناعي غير متاحين حالياً (${allKeyConfigs.length} مفتاح فشل). يرجى المحاولة لاحقاً أو التواصل مع الإدارة.\n\nتفاصيل الأخطاء:\n${errorSummary}`);
+  }
+
+  console.log(`[AI Parallel] Firing ${allKeyConfigs.length} keys in parallel across ${providers.length} providers...`);
 
   // إنشاء وعد لكل مفتاح — يحل عند النجاح ويرفض عند الفشل
   const promises = allKeyConfigs.map(({ provider, key, index }) => {
@@ -438,7 +479,7 @@ export async function chatWithFallback(
           await new Promise(r => setTimeout(r, keyPosition * 200));
         }
 
-        const result = await callProviderWithTimeout(provider, key, messages, options, 45000);
+        const result = await callProviderWithTimeout(provider, key, messages, options, options?.timeoutMs || 45000);
         const responseTime = Date.now() - startTime;
         const fr = String(result.finishReason || '').toUpperCase();
         const truncated = ['MAX_TOKENS', 'LENGTH', 'STOP_SEQUENCE'].includes(fr) && fr !== 'STOP';
@@ -644,6 +685,122 @@ function extractJson(text: string): string {
   return t;
 }
 
+
+function variationSeed(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function generateNutritionStrategy(patientData: {
+  name: string; age: number; gender: string; weight: number; height: number;
+  activityLevel: string; goal: string; caloriesTarget: number; proteinTarget: number; carbsTarget: number; fatsTarget: number;
+  medicalNotes?: string; doctorNotes?: string; bmi?: number; labReports?: string | null; aiSummary?: string | null; allergies?: string | null;
+}, userId: string): Promise<string> {
+  const prompt = `حلل حالة المريض كأخصائي تغذية علاجية، ثم اكتب استراتيجية تنفيذية قصيرة لإنشاء خطة غذائية أسبوعية واقعية.
+لا تنشئ JSON الآن.
+
+بيانات المريض:
+- الاسم: ${patientData.name}
+- العمر/الجنس: ${patientData.age} / ${patientData.gender}
+- الوزن/الطول: ${patientData.weight} كجم / ${patientData.height} سم${patientData.bmi ? ` / BMI ${Math.round(patientData.bmi * 10) / 10}` : ''}
+- النشاط: ${patientData.activityLevel}
+- الهدف: ${patientData.goal}
+- السعرات والماكروز: ${patientData.caloriesTarget} kcal، بروتين ${patientData.proteinTarget}غ، كارب ${patientData.carbsTarget}غ، دهون ${patientData.fatsTarget}غ
+${patientData.medicalNotes ? `- ملاحظات طبية: ${patientData.medicalNotes}` : ''}
+${patientData.doctorNotes ? `- ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
+${patientData.allergies ? `- ممنوع/حساسية: ${patientData.allergies}` : ''}
+${patientData.labReports ? `- تحاليل: ${patientData.labReports}` : ''}
+${patientData.aiSummary ? `- ملخص سابق: ${patientData.aiSummary}` : ''}
+
+اكتب الاستراتيجية في نقاط وتشمل: توزيع الوجبات، نوعية الأطعمة المناسبة، محاذير، كيفية توزيع البروتين والكارب حول النشاط، وقواعد التنويع.`;
+  const res = await chatWithAutoContinue(
+    [{ role: 'system', content: 'أنت أخصائي تغذية علاجية خبير. أجب بالعربية بدقة واختصار.' }, { role: 'user', content: prompt }],
+    userId,
+    'nutrition_plan',
+    { maxOutputTokens: 2048, temperature: 0.45, executionMode: 'sequential', timeoutMs: 70000 },
+    0
+  );
+  return res.content.slice(0, 4000);
+}
+
+async function generateExerciseStrategy(patientData: {
+  name: string; age: number; gender: string; weight: number; height?: number;
+  activityLevel: string; goal: string; medicalNotes?: string; doctorNotes?: string; bmi?: number;
+  labReports?: string | null; aiSummary?: string | null; allergies?: string | null;
+}, userId: string, seed: string): Promise<string> {
+  const prompt = `حلل حالة المريض كمدرب رياضي وأخصائي Exercise Prescription ثم اختر استراتيجية تدريب أسبوعية مناسبة.
+لا تنشئ JSON الآن.
+
+بيانات المريض:
+- الاسم: ${patientData.name}
+- العمر/الجنس: ${patientData.age} / ${patientData.gender}
+- الوزن/الطول: ${patientData.weight} كجم / ${patientData.height || 'غير محدد'} سم${patientData.bmi ? ` / BMI ${Math.round(patientData.bmi * 10) / 10}` : ''}
+- النشاط الحالي: ${patientData.activityLevel}
+- الهدف: ${patientData.goal}
+${patientData.medicalNotes ? `- ملاحظات طبية/إصابات: ${patientData.medicalNotes}` : ''}
+${patientData.doctorNotes ? `- ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
+${patientData.labReports ? `- تحاليل: ${patientData.labReports}` : ''}
+${patientData.aiSummary ? `- ملخص سابق: ${patientData.aiSummary}` : ''}
+
+Variation Seed: ${seed}
+
+حدد: مستوى المريض المتوقع، عدد أيام التمرين المناسب، نوع التقسيم (Full Body/Upper Lower/PPL/Hybrid)، أيام الراحة، شدة RPE، محاذير، وكيفية التنويع والتدرج. لا تستخدم قالب صدر/ترايسبس تلقائيًا إلا إذا كان مناسبًا فعلاً.`;
+  const res = await chatWithAutoContinue(
+    [{ role: 'system', content: 'أنت مدرب رياضي عربي معتمد. صمم استراتيجية آمنة وغير مكررة ومناسبة للمريض.' }, { role: 'user', content: prompt }],
+    userId,
+    'exercise_plan',
+    { maxOutputTokens: 2048, temperature: 0.55, executionMode: 'sequential', timeoutMs: 70000 },
+    0
+  );
+  return res.content.slice(0, 4000);
+}
+
+function validateNutritionDays(days: NutritionPlanDay[], targets: { calories: number; protein: number }): string[] {
+  const issues: string[] = [];
+  const seenMeals = new Map<string, number>();
+  if (!Array.isArray(days) || days.length === 0) issues.push('لا توجد أيام في الخطة');
+  for (const day of days || []) {
+    if (!day.meals || day.meals.length !== 5) issues.push(`${day.dayName}: يجب أن يحتوي اليوم على 5 وجبات بالضبط`);
+    let calories = 0, protein = 0;
+    for (const meal of day.meals || []) {
+      if (!meal.items || meal.items.length < 2) issues.push(`${day.dayName}/${meal.name}: الوجبة تحتوي أصناف قليلة جداً`);
+      const key = (meal.items || []).map(i => i.name).join('|');
+      seenMeals.set(key, (seenMeals.get(key) || 0) + 1);
+      for (const item of meal.items || []) {
+        calories += Number(item.calories || 0); protein += Number(item.protein || 0);
+        if ((item.grams || 0) > 600) issues.push(`${day.dayName}: كمية غير منطقية للصنف ${item.name} (${item.grams}غ)`);
+        if ((item.calories || 0) > 1000) issues.push(`${day.dayName}: سعرات صنف مرتفعة جداً ${item.name}`);
+      }
+    }
+    if (targets.calories && Math.abs(calories - targets.calories) / targets.calories > 0.18) issues.push(`${day.dayName}: السعرات بعيدة عن المستهدف (${Math.round(calories)} مقابل ${targets.calories})`);
+    if (targets.protein && Math.abs(protein - targets.protein) / targets.protein > 0.25) issues.push(`${day.dayName}: البروتين بعيد عن المستهدف (${Math.round(protein)} مقابل ${targets.protein})`);
+  }
+  for (const [meal, count] of seenMeals) if (meal && count > 2) issues.push(`تكرار نفس الوجبة أكثر من مرتين: ${meal}`);
+  return issues.slice(0, 10);
+}
+
+function validateExercisePlan(plan: StructuredExercisePlan): string[] {
+  const issues: string[] = [];
+  const days = plan.weekDays || [];
+  if (days.length !== 7) issues.push('الخطة يجب أن تحتوي 7 أيام بالضبط');
+  const rest = days.filter(d => d.isRest).length;
+  if (rest < 1 || rest > 3) issues.push(`عدد أيام الراحة غير منطقي (${rest})`);
+  const exerciseCounts = new Map<string, number>();
+  for (const day of days) {
+    if (day.isRest && day.exercises?.length) issues.push(`${day.dayName}: يوم راحة يحتوي تمارين`);
+    if (!day.isRest) {
+      if (!day.exercises || day.exercises.length < 3 || day.exercises.length > 8) issues.push(`${day.dayName}: عدد التمارين غير مناسب`);
+      for (const ex of day.exercises || []) {
+        const key = ex.name.trim().toLowerCase();
+        exerciseCounts.set(key, (exerciseCounts.get(key) || 0) + 1);
+      }
+    }
+  }
+  for (const [name, count] of exerciseCounts) if (count > 2) issues.push(`تكرار زائد للتمرين: ${name}`);
+  if (!plan.warmup) issues.push('لا يوجد إحماء');
+  if (!plan.cooldown) issues.push('لا يوجد تهدئة/إطالات');
+  return issues.slice(0, 10);
+}
+
 /**
  * توليد جزء من خطة التغذية (مجموعة أيام محددة)
  */
@@ -657,7 +814,9 @@ async function generateNutritionDays(
     labReports?: string | null; aiSummary?: string | null; allergies?: string | null;
   },
   dayNames: string[],
-  userId: string
+  userId: string,
+  strategy: string,
+  seed: string
 ): Promise<NutritionPlanDay[]> {
   const inBodyLines = [];
   if (patientData.inBodyData) {
@@ -686,8 +845,14 @@ async function generateNutritionDays(
   ]
 }
 
+استراتيجية الطبيب/الذكاء قبل التحويل:
+${strategy}
+
+Variation Seed: ${seed}
+
 قواعد صارمة:
 - الأيام (بالترتيب): ${dayNames.join('، ')}
+- لا تنسخ المثال الموجود في البنية، هو للتوضيح فقط.
 - كل يوم 5 وجبات بالضبط:
   1) breakfast - الفطور - 08:00
   2) snack1 - سناك صباحي - 10:30
@@ -695,8 +860,11 @@ async function generateNutritionDays(
   4) snack2 - سناك مسائي - 17:00
   5) dinner - العشاء - 20:00
 - كل وجبة 2-4 أصناف، أرقام دقيقة لكل صنف
-- الإجمالي اليومي ~${patientData.caloriesTarget} سعرة، ${patientData.proteinTarget}غ بروتين (±10%)
-- أطعمة عربية شعبية، تنويع بين الأيام
+- الإجمالي اليومي قريب من ${patientData.caloriesTarget} سعرة (±7-10%)، ${patientData.proteinTarget}غ بروتين (±10%)
+- وزع البروتين على 4 وجبات على الأقل ولا تضع معظم البروتين في وجبة واحدة.
+- أطعمة عربية/مصرية واقعية وقابلة للتنفيذ، مع تنويع واضح بين الأيام.
+- ممنوع كميات غير منطقية: لا تستخدم 500غ شوفان، 1 كجم دجاج، أو صنف واحد فوق 900 سعرة إلا لسبب واضح.
+- لا تكرر نفس الوجبة أو نفس تركيبة الأصناف أكثر من مرتين في الأسبوع.
 ${patientData.medicalNotes ? `- راعي الملاحظات الطبية: ${patientData.medicalNotes}` : ''}
 ${patientData.allergies ? `- تجنب: ${patientData.allergies}` : ''}
 ${patientData.doctorNotes ? `- ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
@@ -715,7 +883,7 @@ JSON فقط. ابدأ بـ { وانته بـ }.`;
     ],
     userId,
     'nutrition_plan',
-    { maxOutputTokens: 8192, temperature: 0.6, jsonMode: true },
+    { maxOutputTokens: 8192, temperature: 0.55, jsonMode: true, executionMode: 'sequential', timeoutMs: 70000 },
     1
   );
 
@@ -745,14 +913,17 @@ export async function generateNutritionPlan(
   },
   userId: string
 ): Promise<StructuredNutritionPlan> {
+  const seed = variationSeed(`nutrition-${patientData.name}`);
+  const strategy = await generateNutritionStrategy(patientData, userId);
+
   // توليد على دفعتين بفاصل زمني صغير (لتجنب rate limit مع تسريع الاستجابة)
   const batch1 = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء'];
   const batch2 = ['الأربعاء', 'الخميس', 'الجمعة'];
 
-  const days1 = await generateNutritionDays(patientData, batch1, userId);
+  const days1 = await generateNutritionDays(patientData, batch1, userId, strategy, seed);
   // انتظر ثانية واحدة قبل الدفعة الثانية لتجنب rate limit
   await new Promise(r => setTimeout(r, 1000));
-  const days2 = await generateNutritionDays(patientData, batch2, userId);
+  const days2 = await generateNutritionDays(patientData, batch2, userId, strategy, seed);
 
   const allDays = [...days1, ...days2];
 
@@ -767,6 +938,11 @@ export async function generateNutritionPlan(
         item.fats = Math.round((item.fats || 0) * 10) / 10;
       }
     }
+  }
+
+  const issues = validateNutritionDays(allDays, { calories: patientData.caloriesTarget, protein: patientData.proteinTarget });
+  if (issues.length) {
+    console.warn('[AI Nutrition Validation]', issues.join(' | '));
   }
 
   return {
@@ -906,7 +1082,17 @@ export async function generateExercisePlan(
     }
   }
 
-  const systemPrompt = `أنت مدرب رياضي عربي معتمد. أنشئ خطة تمارين أسبوعية بصيغة JSON صالحة فقط (بدون markdown).
+  const seed = variationSeed(`exercise-${patientData.name}`);
+  const strategy = await generateExerciseStrategy(patientData, userId, seed);
+
+  const systemPrompt = `أنت مدرب رياضي عربي معتمد. حوّل الاستراتيجية التالية إلى خطة تمارين أسبوعية بصيغة JSON صالحة فقط (بدون markdown).
+
+استراتيجية الخطة:
+${strategy}
+
+Variation Seed: ${seed}
+
+مهم: لا تستخدم تمارين أو تقسيمات ثابتة لمجرد أنها في المثال. اختر تمارين مناسبة فعلاً لحالة المريض وغيّر النسخة حسب الـ Variation Seed.
 
 البنية المطلوبة:
 {
@@ -914,9 +1100,9 @@ export async function generateExercisePlan(
     {
       "dayName": "السبت",
       "isRest": false,
-      "focus": "صدر وترايسبس",
+      "focus": "تركيز اليوم المناسب حسب الاستراتيجية",
       "exercises": [
-        { "name": "بنش برس بالبار", "sets": 4, "reps": "10-12", "restSeconds": 90, "notes": "احرص على الفورم" }
+        { "name": "اسم تمرين مناسب للمريض", "sets": 3, "reps": "8-12", "restSeconds": 60, "notes": "تعليمات الأداء والسلامة" }
       ]
     }
   ],
@@ -927,11 +1113,12 @@ export async function generateExercisePlan(
 
 قواعد صارمة:
 1. **بالضبط 7 أيام** (السبت، الأحد، الإثنين، الثلاثاء، الأربعاء، الخميس، الجمعة)
-2. **5-6 أيام تدريب + 1-2 يوم راحة** (isRest: true، exercises: [])
-3. كل يوم تدريب 4-7 تمارين
-4. ركّز على هدف المريض: ${patientData.goal}
-5. كل تمرين: name (عربي مع اللاتيني بين قوسين إن أردت)، sets، reps، restSeconds، notes اختيارية
-6. اتبع تقسيم Push/Pull/Legs أو Upper/Lower أو Full Body حسب الأنسب
+2. عدد أيام التدريب يجب أن يتبع الاستراتيجية: مبتدئ غالباً 3-4 أيام، متوسط 4-5، متقدم 5-6، مع 1-3 أيام راحة حسب الحالة.
+3. كل يوم تدريب 3-7 تمارين حسب المستوى والمدة، ولا تكرر نفس التمرين أكثر من مرتين بالأسبوع.
+4. ركّز على هدف المريض: ${patientData.goal} مع أمان المفاصل والقلب.
+5. كل تمرين: name، sets، reps، restSeconds، notes، ويمكن إضافة rpe إن أمكن داخل notes.
+6. اختر التقسيم الأنسب من الاستراتيجية ولا تستخدم Push/Pull/Legs دائماً.
+7. إذا BMI مرتفع أو توجد ملاحظات طبية، تجنب القفز والجري عالي الصدمة والتحميل الخطير.
 ${patientData.medicalNotes ? `7. راعي الملاحظات الطبية: ${patientData.medicalNotes}` : ''}
 ${patientData.doctorNotes ? `8. ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
 ${inBodyLines.length > 0 ? `9. بيانات InBody: ${inBodyLines.join('، ')}` : ''}
@@ -957,7 +1144,7 @@ ${patientData.bmi ? `- BMI: ${Math.round(patientData.bmi * 10) / 10}` : ''}
     ],
     userId,
     'exercise_plan',
-    { maxOutputTokens: 8192, temperature: 0.6, jsonMode: true },
+    { maxOutputTokens: 8192, temperature: 0.65, jsonMode: true, executionMode: 'sequential', timeoutMs: 70000 },
     2
   );
 
@@ -968,6 +1155,11 @@ ${patientData.bmi ? `- BMI: ${Math.round(patientData.bmi * 10) / 10}` : ''}
   } catch (e) {
     console.error('Failed to parse exercise plan JSON. Sample:', cleaned.substring(0, 500));
     throw new Error(`فشل تحويل خطة التمارين من AI إلى صيغة منظمة. حاول مرة أخرى.`);
+  }
+
+  const exerciseIssues = validateExercisePlan(parsed);
+  if (exerciseIssues.length) {
+    console.warn('[AI Exercise Validation]', exerciseIssues.join(' | '));
   }
 
   if (parsed.weekDays && Array.isArray(parsed.weekDays)) {
