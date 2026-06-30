@@ -188,6 +188,23 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const [aiNotesDialogOpen, setAiNotesDialogOpen] = useState(false);
   const [aiNotesText, setAiNotesText] = useState('');
   const [pendingAiType, setPendingAiType] = useState<'nutrition' | 'exercise' | null>(null);
+  const [nutritionAiOptions, setNutritionAiOptions] = useState({
+    mealCount: '5',
+    cuisine: 'مصري/عربي',
+    budget: 'متوسطة',
+    dislikedFoods: '',
+    allergies: '',
+    includeAlternatives: 'yes',
+  });
+  const [exerciseAiOptions, setExerciseAiOptions] = useState({
+    trainingPlace: 'gym',
+    fitnessLevel: 'beginner',
+    daysPerWeek: '4',
+    sessionDuration: '45',
+    injuries: '',
+    equipment: '',
+    preference: 'حرق دهون وبناء عضل',
+  });
 
   // New visit form
   const [visitForm, setVisitForm] = useState({
@@ -343,6 +360,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           name: 'خطة تغذية بالذكاء الاصطناعي',
           useAi: true,
           doctorNotes: notes || undefined,
+          generationOptions: nutritionAiOptions,
         }),
       });
       const data = await res.json();
@@ -374,6 +392,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           name: 'خطة تمارين بالذكاء الاصطناعي',
           useAi: true,
           doctorNotes: notes || undefined,
+          generationOptions: exerciseAiOptions,
         }),
       });
       const data = await res.json();
@@ -497,6 +516,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           patientId: id,
           name: 'خطة تغذية بالذكاء الاصطناعي',
           useAi: true,
+          generationOptions: nutritionAiOptions,
         }),
       });
       const data = await res.json();
@@ -528,6 +548,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           patientId: id,
           name: 'خطة تمارين بالذكاء الاصطناعي',
           useAi: true,
+          generationOptions: exerciseAiOptions,
         }),
       });
       const data = await res.json();
@@ -1687,15 +1708,38 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
               أضف أي ملاحظات أو تعليمات خاصة تريد أن يأخذها المساعد الذكي في الاعتبار عند إنشاء الخطة
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="مثال: المريض نباتي، لا يأكل حليب، يفضل الأرز البني، يعاني من حرقة المعدة..."
-              value={aiNotesText}
-              onChange={(e) => setAiNotesText(e.target.value)}
-              className="min-h-[120px] text-sm"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              هذه الملاحظات ستُرسل للذكاء الاصطناعي لإنشاء خطة {pendingAiType === 'nutrition' ? 'تغذية' : 'تمارين'} مخصصة.
+          <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            {pendingAiType === 'nutrition' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label className="text-xs">عدد الوجبات</Label><Select value={nutritionAiOptions.mealCount} onValueChange={(v) => setNutritionAiOptions(o => ({ ...o, mealCount: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="3">3 وجبات</SelectItem><SelectItem value="4">4 وجبات</SelectItem><SelectItem value="5">5 وجبات</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label className="text-xs">المطبخ المفضل</Label><Input value={nutritionAiOptions.cuisine} onChange={(e)=>setNutritionAiOptions(o=>({...o,cuisine:e.target.value}))} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">الميزانية</Label><Select value={nutritionAiOptions.budget} onValueChange={(v) => setNutritionAiOptions(o => ({ ...o, budget: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="اقتصادية">اقتصادية</SelectItem><SelectItem value="متوسطة">متوسطة</SelectItem><SelectItem value="مفتوحة">مفتوحة</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label className="text-xs">بدائل للوجبات؟</Label><Select value={nutritionAiOptions.includeAlternatives} onValueChange={(v) => setNutritionAiOptions(o => ({ ...o, includeAlternatives: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="yes">نعم</SelectItem><SelectItem value="no">لا</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5 sm:col-span-2"><Label className="text-xs">أطعمة غير مفضلة/ممنوعة</Label><Input value={nutritionAiOptions.dislikedFoods} onChange={(e)=>setNutritionAiOptions(o=>({...o,dislikedFoods:e.target.value}))} placeholder="مثال: تونة، لبن، فول..." /></div>
+                <div className="space-y-1.5 sm:col-span-2"><Label className="text-xs">حساسيات غذائية</Label><Input value={nutritionAiOptions.allergies} onChange={(e)=>setNutritionAiOptions(o=>({...o,allergies:e.target.value}))} placeholder="مثال: حساسية لاكتوز، مكسرات..." /></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label className="text-xs">مكان التمرين</Label><Select value={exerciseAiOptions.trainingPlace} onValueChange={(v)=>setExerciseAiOptions(o=>({...o,trainingPlace:v}))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="gym">جيم</SelectItem><SelectItem value="home">منزل</SelectItem><SelectItem value="no_equipment">بدون معدات</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label className="text-xs">المستوى</Label><Select value={exerciseAiOptions.fitnessLevel} onValueChange={(v)=>setExerciseAiOptions(o=>({...o,fitnessLevel:v}))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="beginner">مبتدئ</SelectItem><SelectItem value="intermediate">متوسط</SelectItem><SelectItem value="advanced">متقدم</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label className="text-xs">أيام التمرين أسبوعيًا</Label><Input type="number" min="2" max="6" value={exerciseAiOptions.daysPerWeek} onChange={(e)=>setExerciseAiOptions(o=>({...o,daysPerWeek:e.target.value}))} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">مدة الحصة بالدقائق</Label><Input type="number" min="20" max="120" value={exerciseAiOptions.sessionDuration} onChange={(e)=>setExerciseAiOptions(o=>({...o,sessionDuration:e.target.value}))} /></div>
+                <div className="space-y-1.5 sm:col-span-2"><Label className="text-xs">المعدات المتاحة</Label><Input value={exerciseAiOptions.equipment} onChange={(e)=>setExerciseAiOptions(o=>({...o,equipment:e.target.value}))} placeholder="دامبل، بار، أجهزة، مقاومة مطاطية..." /></div>
+                <div className="space-y-1.5 sm:col-span-2"><Label className="text-xs">إصابات أو آلام</Label><Input value={exerciseAiOptions.injuries} onChange={(e)=>setExerciseAiOptions(o=>({...o,injuries:e.target.value}))} placeholder="ركبة، ظهر، كتف..." /></div>
+                <div className="space-y-1.5 sm:col-span-2"><Label className="text-xs">تفضيل الخطة</Label><Input value={exerciseAiOptions.preference} onChange={(e)=>setExerciseAiOptions(o=>({...o,preference:e.target.value}))} /></div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">ملاحظات إضافية للطبيب</Label>
+              <Textarea
+                placeholder="اكتب أي تعليمات خاصة إضافية..."
+                value={aiNotesText}
+                onChange={(e) => setAiNotesText(e.target.value)}
+                className="min-h-[110px] text-sm"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              سيتم إرسال هذه الإعدادات والملاحظات للذكاء الاصطناعي لإنشاء خطة {pendingAiType === 'nutrition' ? 'تغذية' : 'تمارين'} أقرب لأسلوب الشات بوت.
             </p>
           </div>
           <DialogFooter>

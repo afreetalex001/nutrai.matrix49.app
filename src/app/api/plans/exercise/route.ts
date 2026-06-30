@@ -7,6 +7,20 @@ import { db } from '@/lib/db';
 import { getAuthUser, unauthorized, forbidden } from '@/lib/api-auth';
 import { generateExercisePlan } from '@/lib/ai-fallback';
 
+
+function formatExerciseGenerationOptions(opts: any): string {
+  if (!opts || typeof opts !== 'object') return '';
+  const lines: string[] = ['إعدادات توليد التمارين من الطبيب:'];
+  if (opts.trainingPlace) lines.push(`- مكان التمرين: ${opts.trainingPlace}`);
+  if (opts.fitnessLevel) lines.push(`- مستوى المتدرب: ${opts.fitnessLevel}`);
+  if (opts.daysPerWeek) lines.push(`- عدد أيام التمرين أسبوعيًا: ${opts.daysPerWeek}`);
+  if (opts.sessionDuration) lines.push(`- مدة الحصة بالدقائق: ${opts.sessionDuration}`);
+  if (opts.equipment) lines.push(`- المعدات المتاحة: ${opts.equipment}`);
+  if (opts.injuries) lines.push(`- إصابات أو آلام يجب مراعاتها: ${opts.injuries}`);
+  if (opts.preference) lines.push(`- تفضيل الخطة: ${opts.preference}`);
+  return lines.join('\n');
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthUser(request);
@@ -42,6 +56,7 @@ export async function POST(request: NextRequest) {
       patientId, name, description, schedule, structuredPlan,
       weekNumber, isAdaptive, adaptiveFromVisit, isActive, useAi,
       doctorNotes,
+      generationOptions,
     } = body;
 
     if (!patientId) return Response.json({ error: 'معرف المريض مطلوب' }, { status: 400 });
@@ -98,7 +113,8 @@ export async function POST(request: NextRequest) {
           activityLevel: patient.activityLevel || 'moderate',
           goal: patient.goal || 'maintain',
           medicalNotes: patient.medicalNotes || undefined,
-          doctorNotes: doctorNotes || undefined,
+          doctorNotes: [doctorNotes, formatExerciseGenerationOptions(generationOptions)].filter(Boolean).join('\n\n') || undefined,
+          allergies: generationOptions?.injuries || undefined,
           bmi,
           inBodyData,
           labReports,

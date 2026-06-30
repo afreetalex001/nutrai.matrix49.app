@@ -9,6 +9,19 @@ import { db } from '@/lib/db';
 import { getAuthUser, unauthorized, forbidden } from '@/lib/api-auth';
 import { generateNutritionPlan, calculatePlanTotals } from '@/lib/ai-fallback';
 
+
+function formatNutritionGenerationOptions(opts: any): string {
+  if (!opts || typeof opts !== 'object') return '';
+  const lines: string[] = ['إعدادات توليد التغذية من الطبيب:'];
+  if (opts.mealCount) lines.push(`- عدد الوجبات المطلوب: ${opts.mealCount}`);
+  if (opts.cuisine) lines.push(`- المطبخ/الأطعمة المفضلة: ${opts.cuisine}`);
+  if (opts.budget) lines.push(`- الميزانية: ${opts.budget}`);
+  if (opts.dislikedFoods) lines.push(`- أطعمة ممنوعة أو غير مفضلة: ${opts.dislikedFoods}`);
+  if (opts.allergies) lines.push(`- حساسيات: ${opts.allergies}`);
+  if (opts.includeAlternatives) lines.push(`- إضافة بدائل للوجبات: ${opts.includeAlternatives === 'yes' ? 'نعم' : 'لا'}`);
+  return lines.join('\n');
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthUser(request);
@@ -60,6 +73,7 @@ export async function POST(request: NextRequest) {
       isActive,
       useAi,
       doctorNotes,
+      generationOptions,
     } = body;
 
     if (!patientId) {
@@ -144,7 +158,8 @@ export async function POST(request: NextRequest) {
           carbsTarget: finalCarbs,
           fatsTarget: finalFats,
           medicalNotes: patient.medicalNotes || undefined,
-          doctorNotes: doctorNotes || undefined,
+          doctorNotes: [doctorNotes, formatNutritionGenerationOptions(generationOptions)].filter(Boolean).join('\n\n') || undefined,
+          allergies: generationOptions?.allergies || undefined,
           bmi,
           inBodyData,
           labReports,
