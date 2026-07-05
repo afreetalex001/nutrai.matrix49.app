@@ -66,6 +66,21 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/lib/auth-store';
+import { isApiError } from '@/lib/api-error';
+import {
+  createVisit,
+  deleteLabReport,
+  generateAiSummary as requestAiSummary,
+  generateExercisePlan as requestExercisePlan,
+  generateNutritionPlan as requestNutritionPlan,
+  getAiSummary,
+  getExercisePlan,
+  getLabReports,
+  getNutritionPlan,
+  getPatientDetail,
+  updatePatient,
+  uploadLabReport,
+} from '@/features/patients/services/patient-detail.api';
 
 const goalLabels: Record<string, string> = {
   lose_weight: 'فقدان الوزن',
@@ -220,16 +235,13 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     async function fetchPatient() {
       if (!token) return;
       try {
-        const res = await fetch(`/api/patients/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setPatient(data.patient);
-        } else if (res.status === 404) {
-          router.push('/patients');
-        }
+        const data = await getPatientDetail<Patient>(token, id);
+        setPatient(data.patient);
       } catch (error) {
+        if (isApiError(error) && error.status === 404) {
+          router.push('/patients');
+          return;
+        }
         console.error('Error fetching patient:', error);
       } finally {
         setLoading(false);
@@ -296,30 +308,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
         };
       }
 
-      const res = await fetch(`/api/patients/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        toast.success('تم تحديث بيانات المريض بنجاح');
-        setEditDialogOpen(false);
-        // Refresh patient data
-        const patientRes = await fetch(`/api/patients/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (patientRes.ok) {
-          const d = await patientRes.json();
-          setPatient(d.patient);
-        }
-      } else {
-        toast.error(data.error || 'فشل تحديث البيانات');
-      }
+      await updatePatient<Patient>(token, id, body);
+      toast.success('تم تحديث بيانات المريض بنجاح');
+      setEditDialogOpen(false);
+      const refreshed = await getPatientDetail<Patient>(token, id);
+      setPatient(refreshed.patient);
     } catch (error) {
       toast.error('تعذر الاتصال بالخادم');
     } finally {
@@ -352,28 +345,19 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setAiNutritionLoading(true);
     const t = toast.loading('جارٍ إنشاء خطة التغذية بالذكاء الاصطناعي... قد تستغرق 20-40 ثانية');
     try {
-      const res = await fetch('/api/plans/nutrition', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          patientId: id,
-          name: 'خطة تغذية بالذكاء الاصطناعي',
-          useAi: true,
-          doctorNotes: notes || undefined,
-          generationOptions: nutritionAiOptions,
-        }),
+      const data = await requestNutritionPlan<NutritionPlan>(token, {
+        patientId: id,
+        name: 'خطة تغذية بالذكاء الاصطناعي',
+        useAi: true,
+        doctorNotes: notes || undefined,
+        generationOptions: nutritionAiOptions,
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
-        await refreshPatient();
-        if (data.plan?.id) await openNutritionPlan(data.plan.id);
-      } else {
-        toast.error(data.error || 'فشل إنشاء الخطة', { id: t, duration: 8000 });
-      }
+      toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
+      await refreshPatient();
+      if (data.plan?.id) await openNutritionPlan(data.plan.id);
     } catch (error) {
       console.error('Error creating AI plan:', error);
-      toast.error('تعذر الاتصال بالخادم', { id: t });
+      toast.error(isApiError(error) ? error.message : 'تعذر الاتصال بالخادم', { id: t, duration: 8000 });
     } finally {
       setAiNutritionLoading(false);
     }
@@ -384,28 +368,19 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setAiExerciseLoading(true);
     const t = toast.loading('جارٍ إنشاء خطة التمارين بالذكاء الاصطناعي... قد تستغرق 15-30 ثانية');
     try {
-      const res = await fetch('/api/plans/exercise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          patientId: id,
-          name: 'خطة تمارين بالذكاء الاصطناعي',
-          useAi: true,
-          doctorNotes: notes || undefined,
-          generationOptions: exerciseAiOptions,
-        }),
+      const data = await requestExercisePlan<ExercisePlan>(token, {
+        patientId: id,
+        name: 'خطة تمارين بالذكاء الاصطناعي',
+        useAi: true,
+        doctorNotes: notes || undefined,
+        generationOptions: exerciseAiOptions,
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
-        await refreshPatient();
-        if (data.plan?.id) await openExercisePlan(data.plan.id);
-      } else {
-        toast.error(data.error || 'فشل إنشاء الخطة', { id: t, duration: 8000 });
-      }
+      toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
+      await refreshPatient();
+      if (data.plan?.id) await openExercisePlan(data.plan.id);
     } catch (error) {
       console.error('Error creating AI plan:', error);
-      toast.error('تعذر الاتصال بالخادم', { id: t });
+      toast.error(isApiError(error) ? error.message : 'تعذر الاتصال بالخادم', { id: t, duration: 8000 });
     } finally {
       setAiExerciseLoading(false);
     }
@@ -422,24 +397,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       if (visitForm.waterPercentage) body.waterPercentage = parseFloat(visitForm.waterPercentage);
       if (visitForm.notes) body.notes = visitForm.notes;
 
-      const res = await fetch('/api/visits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
-
-      if (res.ok) {
-        setVisitDialogOpen(false);
-        setVisitForm({ weight: '', height: '', bodyFat: '', muscleMass: '', waterPercentage: '', notes: '' });
-        // Refresh patient data
-        const patientRes = await fetch(`/api/patients/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (patientRes.ok) {
-          const data = await patientRes.json();
-          setPatient(data.patient);
-        }
-      }
+      await createVisit(token, body);
+      setVisitDialogOpen(false);
+      setVisitForm({ weight: '', height: '', bodyFat: '', muscleMass: '', waterPercentage: '', notes: '' });
+      const data = await getPatientDetail<Patient>(token, id);
+      setPatient(data.patient);
     } catch (error) {
       console.error('Error creating visit:', error);
     } finally {
@@ -473,11 +435,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setLoadingPlanDetail(true);
     setSelectedNutritionPlanId(planId);
     try {
-      const res = await fetch(`/api/plans/nutrition/${planId}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedNutritionStructured(data.structured || { weekDays: [{ dayName: 'السبت', meals: [] }, { dayName: 'الأحد', meals: [] }, { dayName: 'الإثنين', meals: [] }, { dayName: 'الثلاثاء', meals: [] }, { dayName: 'الأربعاء', meals: [] }, { dayName: 'الخميس', meals: [] }, { dayName: 'الجمعة', meals: [] }] });
-      }
+      const data = await getNutritionPlan<typeof selectedNutritionStructured>(token, planId);
+      setSelectedNutritionStructured(data.structured || { weekDays: [{ dayName: 'السبت', meals: [] }, { dayName: 'الأحد', meals: [] }, { dayName: 'الإثنين', meals: [] }, { dayName: 'الثلاثاء', meals: [] }, { dayName: 'الأربعاء', meals: [] }, { dayName: 'الخميس', meals: [] }, { dayName: 'الجمعة', meals: [] }] });
     } catch (e) { console.error(e); toast.error('فشل تحميل الخطة'); }
     finally { setLoadingPlanDetail(false); }
   };
@@ -487,11 +446,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setLoadingPlanDetail(true);
     setSelectedExercisePlanId(planId);
     try {
-      const res = await fetch(`/api/plans/exercise/${planId}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedExerciseStructured(data.structured || { weekDays: ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'].map(d => ({ dayName: d, isRest: true, exercises: [] })) });
-      }
+      const data = await getExercisePlan<typeof selectedExerciseStructured>(token, planId);
+      setSelectedExerciseStructured(data.structured || { weekDays: ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'].map(d => ({ dayName: d, isRest: true, exercises: [] })) });
     } catch (e) { console.error(e); toast.error('فشل تحميل الخطة'); }
     finally { setLoadingPlanDetail(false); }
   };
@@ -499,8 +455,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const refreshPatient = async () => {
     if (!token) return;
     try {
-      const r = await fetch(`/api/patients/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (r.ok) { const d = await r.json(); setPatient(d.patient); }
+      const data = await getPatientDetail<Patient>(token, id);
+      setPatient(data.patient);
     } catch (e) { console.error(e); }
   };
 
@@ -509,28 +465,18 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setAiNutritionLoading(true);
     const t = toast.loading('جارٍ إنشاء خطة التغذية بالذكاء الاصطناعي... قد تستغرق 20-40 ثانية');
     try {
-      const res = await fetch('/api/plans/nutrition', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          patientId: id,
-          name: 'خطة تغذية بالذكاء الاصطناعي',
-          useAi: true,
-          generationOptions: nutritionAiOptions,
-        }),
+      const data = await requestNutritionPlan<NutritionPlan>(token, {
+        patientId: id,
+        name: 'خطة تغذية بالذكاء الاصطناعي',
+        useAi: true,
+        generationOptions: nutritionAiOptions,
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
-        await refreshPatient();
-        // افتح المحرر تلقائياً
-        if (data.plan?.id) await openNutritionPlan(data.plan.id);
-      } else {
-        toast.error(data.error || 'فشل إنشاء الخطة', { id: t, duration: 8000 });
-      }
+      toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
+      await refreshPatient();
+      if (data.plan?.id) await openNutritionPlan(data.plan.id);
     } catch (error) {
       console.error('Error creating AI plan:', error);
-      toast.error('تعذر الاتصال بالخادم', { id: t });
+      toast.error(isApiError(error) ? error.message : 'تعذر الاتصال بالخادم', { id: t, duration: 8000 });
     } finally {
       setAiNutritionLoading(false);
     }
@@ -541,27 +487,18 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setAiExerciseLoading(true);
     const t = toast.loading('جارٍ إنشاء خطة التمارين بالذكاء الاصطناعي... قد تستغرق 15-30 ثانية');
     try {
-      const res = await fetch('/api/plans/exercise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          patientId: id,
-          name: 'خطة تمارين بالذكاء الاصطناعي',
-          useAi: true,
-          generationOptions: exerciseAiOptions,
-        }),
+      const data = await requestExercisePlan<ExercisePlan>(token, {
+        patientId: id,
+        name: 'خطة تمارين بالذكاء الاصطناعي',
+        useAi: true,
+        generationOptions: exerciseAiOptions,
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
-        await refreshPatient();
-        if (data.plan?.id) await openExercisePlan(data.plan.id);
-      } else {
-        toast.error(data.error || 'فشل إنشاء الخطة', { id: t, duration: 8000 });
-      }
+      toast.success('تم إنشاء مسودة - راجعها وعدّل', { id: t });
+      await refreshPatient();
+      if (data.plan?.id) await openExercisePlan(data.plan.id);
     } catch (error) {
       console.error('Error creating AI plan:', error);
-      toast.error('تعذر الاتصال بالخادم', { id: t });
+      toast.error(isApiError(error) ? error.message : 'تعذر الاتصال بالخادم', { id: t, duration: 8000 });
     } finally {
       setAiExerciseLoading(false);
     }
@@ -571,13 +508,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const fetchAiSummary = async () => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/patients/${id}/ai-summary`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAiSummary({ summary: data.summary, generatedAt: data.generatedAt });
-      }
+      const data = await getAiSummary(token, id);
+      setAiSummary({ summary: data.summary, generatedAt: data.generatedAt });
     } catch (e) { console.error(e); }
   };
 
@@ -586,19 +518,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     setAiSummaryLoading(true);
     const t = toast.loading('جارٍ توليد ملخص ذكي عن المريض...');
     try {
-      const res = await fetch(`/api/patients/${id}/ai-summary`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setAiSummary({ summary: data.summary, generatedAt: data.generatedAt });
-        toast.success('تم توليد الملخص بنجاح', { id: t });
-      } else {
-        toast.error(data.error || 'فشل توليد الملخص', { id: t });
-      }
-    } catch (e) {
-      toast.error('تعذر الاتصال بالخادم', { id: t });
+      const data = await requestAiSummary(token, id);
+      setAiSummary({ summary: data.summary, generatedAt: data.generatedAt });
+      toast.success('تم توليد الملخص بنجاح', { id: t });
+    } catch (error) {
+      toast.error(isApiError(error) ? error.message : 'تعذر الاتصال بالخادم', { id: t });
     } finally {
       setAiSummaryLoading(false);
     }
@@ -608,13 +532,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const fetchLabReports = async () => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/patients/${id}/lab-reports`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLabReports(data.reports || []);
-      }
+      const data = await getLabReports<(typeof labReports)[number]>(token, id);
+      setLabReports(data.reports || []);
     } catch (e) { console.error(e); }
   };
 
@@ -625,20 +544,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch(`/api/patients/${id}/lab-reports`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success('تم تحليل التحليل بنجاح', { id: t });
-        await fetchLabReports();
-      } else {
-        toast.error(data.error || 'فشل تحليل الملف', { id: t, duration: 8000 });
-      }
-    } catch (e) {
-      toast.error('تعذر الاتصال بالخادم', { id: t });
+      await uploadLabReport<(typeof labReports)[number]>(token, id, fd);
+      toast.success('تم تحليل التحليل بنجاح', { id: t });
+      await fetchLabReports();
+    } catch (error) {
+      toast.error(isApiError(error) ? error.message : 'تعذر الاتصال بالخادم', { id: t, duration: 8000 });
     } finally {
       setLabUploading(false);
     }
@@ -648,19 +558,11 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     if (!token) return;
     if (!confirm('هل أنت متأكد من حذف هذا التحليل؟')) return;
     try {
-      const res = await fetch(`/api/patients/${id}/lab-reports?index=${index}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        toast.success('تم الحذف');
-        await fetchLabReports();
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'فشل الحذف');
-      }
-    } catch (e) {
-      toast.error('تعذر الاتصال بالخادم');
+      await deleteLabReport(token, id, index);
+      toast.success('تم الحذف');
+      await fetchLabReports();
+    } catch (error) {
+      toast.error(isApiError(error) ? error.message : 'تعذر الاتصال بالخادم');
     }
   };
 
