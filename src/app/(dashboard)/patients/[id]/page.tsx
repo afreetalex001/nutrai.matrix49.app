@@ -67,6 +67,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/lib/auth-store';
 import { isApiError } from '@/lib/api-error';
+import { usePatientDetail } from '@/features/patients/hooks/use-patient-detail';
 import {
   createVisit,
   deleteLabReport,
@@ -174,8 +175,17 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const router = useRouter();
   const { token } = useAuthStore();
-  const [patient, setPatient] = useState<Patient | null>(null);
-  const [loading, setLoading] = useState(true);
+  const handlePatientNotFound = useCallback(() => router.push('/patients'), [router]);
+  const {
+    patient,
+    setPatient,
+    loading,
+    refreshPatient,
+  } = usePatientDetail<Patient>({
+    token,
+    patientId: id,
+    onNotFound: handlePatientNotFound,
+  });
   const [visitDialogOpen, setVisitDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -230,25 +240,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     waterPercentage: '',
     notes: '',
   });
-
-  useEffect(() => {
-    async function fetchPatient() {
-      if (!token) return;
-      try {
-        const data = await getPatientDetail<Patient>(token, id);
-        setPatient(data.patient);
-      } catch (error) {
-        if (isApiError(error) && error.status === 404) {
-          router.push('/patients');
-          return;
-        }
-        console.error('Error fetching patient:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchPatient();
-  }, [token, id, router]);
 
   // Fetch AI summary and lab reports when patient is loaded
   useEffect(() => {
@@ -450,14 +441,6 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       setSelectedExerciseStructured(data.structured || { weekDays: ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'].map(d => ({ dayName: d, isRest: true, exercises: [] })) });
     } catch (e) { console.error(e); toast.error('فشل تحميل الخطة'); }
     finally { setLoadingPlanDetail(false); }
-  };
-
-  const refreshPatient = async () => {
-    if (!token) return;
-    try {
-      const data = await getPatientDetail<Patient>(token, id);
-      setPatient(data.patient);
-    } catch (e) { console.error(e); }
   };
 
   const handleCreateAiNutritionPlan = async () => {
