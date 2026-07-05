@@ -1,13 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useAuthStore } from '@/lib/auth-store';
 import { AlertTriangle, CheckCircle2, RefreshCw, ServerCrash } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { motion } from 'framer-motion';
+import { apiClient } from '@/lib/api-client';
+import { getErrorMessage } from '@/lib/api-error';
+import { useAuthToken } from '@/hooks/use-auth-token';
 
 interface ErrorLog {
   id: string;
@@ -23,23 +25,38 @@ interface ErrorLog {
   createdAt: string;
 }
 
+interface AdminErrorsResponse {
+  errors: ErrorLog[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export default function AdminErrorsPage() {
-  const { token } = useAuthStore();
+  const token = useAuthToken();
   const [errors, setErrors] = useState<ErrorLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [resolved, setResolved] = useState('false');
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const fetchErrors = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: '50' });
       if (resolved !== 'all') params.set('resolved', resolved);
-      const res = await fetch(`/api/admin/errors?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        setErrors(data.errors || []);
-      }
+
+      const data = await apiClient.get<AdminErrorsResponse>(`/api/admin/errors?${params}`, { token });
+      setErrors(data.errors || []);
+    } catch (error) {
+      console.error('Error fetching admin errors:', getErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -48,12 +65,14 @@ export default function AdminErrorsPage() {
   useEffect(() => { fetchErrors(); }, [fetchErrors]);
 
   const toggleResolved = async (err: ErrorLog) => {
-    const res = await fetch('/api/admin/errors', {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: err.id, isResolved: !err.isResolved }),
-    });
-    if (res.ok) fetchErrors();
+    if (!token) return;
+
+    try {
+      await apiClient.patch('/api/admin/errors', { id: err.id, isResolved: !err.isResolved }, { token });
+      fetchErrors();
+    } catch (error) {
+      console.error('Error updating admin error:', getErrorMessage(error));
+    }
   };
 
   const badgeClass = (level: string) => level === 'error'
