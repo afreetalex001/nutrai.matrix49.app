@@ -113,7 +113,12 @@ export function NotificationsButton() {
   const handleClick = async (n: Notification) => {
     if (!n.isRead) await markAsRead(n.id);
     setOpen(false);
-    if (n.link) router.push(n.link);
+    if (n.link) {
+      // Use a real navigation for deep links with query params so target pages
+      // can run their initial URL handling reliably even if already mounted.
+      if (n.link.includes('?')) window.location.assign(n.link);
+      else router.push(n.link);
+    }
   };
 
   return (

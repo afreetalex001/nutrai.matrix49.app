@@ -187,6 +187,8 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     onNotFound: handlePatientNotFound,
   });
   const [visitDialogOpen, setVisitDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [openShareFromNotification, setOpenShareFromNotification] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ===== Edit Patient Dialog =====
@@ -443,6 +445,36 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
     finally { setLoadingPlanDetail(false); }
   };
 
+  useEffect(() => {
+    if (!patient || !token) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const nutritionPlanId = params.get('nutritionPlanId');
+    const exercisePlanId = params.get('exercisePlanId');
+    const shouldOpenShare = params.get('share') === '1';
+
+    if (tab && ['overview', 'visits', 'nutrition', 'exercise', 'lab'].includes(tab)) {
+      setActiveTab(tab);
+    }
+
+    if (shouldOpenShare) {
+      setOpenShareFromNotification(true);
+    }
+
+    if (nutritionPlanId) {
+      setActiveTab('nutrition');
+      openNutritionPlan(nutritionPlanId);
+    }
+
+    if (exercisePlanId) {
+      setActiveTab('exercise');
+      openExercisePlan(exercisePlanId);
+    }
+    // Deep-link handling must run once after patient/token are available.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient?.id, token]);
+
   const handleCreateAiNutritionPlan = async () => {
     if (!token || !patient || aiNutritionLoading) return;
     setAiNutritionLoading(true);
@@ -624,7 +656,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
             <Edit className="size-3.5" />
             تعديل البيانات
           </Button>
-          {token && <PatientShareDialog patientId={id} patientName={patient.name} token={token} />}
+          {token && <PatientShareDialog patientId={id} patientName={patient.name} token={token} initialOpen={openShareFromNotification} />}
           <Button variant="outline" size="sm" className="gap-1" onClick={() => window.print()}>
             <Printer className="size-3.5" />
             طباعة
@@ -633,7 +665,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="overview" dir="rtl">
+      <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
         <TabsList className="w-full justify-start no-print flex-wrap h-auto">
           <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
           <TabsTrigger value="visits">الزيارات</TabsTrigger>

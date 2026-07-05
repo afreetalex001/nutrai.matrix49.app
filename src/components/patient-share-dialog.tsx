@@ -36,10 +36,11 @@ interface Props {
   patientId: string;
   patientName: string;
   token: string;
+  initialOpen?: boolean;
 }
 
-export function PatientShareDialog({ patientId, patientName, token }: Props) {
-  const [open, setOpen] = useState(false);
+export function PatientShareDialog({ patientId, patientName, token, initialOpen = false }: Props) {
+  const [open, setOpen] = useState(initialOpen);
   const [shareTokens, setShareTokens] = useState<ShareToken[]>([]);
   const [reports, setReports] = useState<SelfReport[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -66,6 +67,10 @@ export function PatientShareDialog({ patientId, patientName, token }: Props) {
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    if (initialOpen) setOpen(true);
+  }, [initialOpen]);
 
   useEffect(() => {
     if (open) load();
