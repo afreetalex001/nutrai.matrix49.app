@@ -4,17 +4,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-
-interface AuthUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  isActive: boolean;
-  phone?: string;
-  clinicName?: string;
-  specialization?: string;
-}
+import type { AuthUser } from '@/types';
 
 interface AuthState {
   token: string | null;

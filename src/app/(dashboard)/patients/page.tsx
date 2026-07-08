@@ -24,22 +24,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAuthStore } from '@/lib/auth-store';
-
-interface Patient {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  age?: number;
-  gender?: string;
-  goal?: string;
-  activityLevel?: string;
-  weight?: number;
-  height?: number;
-  isActive: boolean;
-  createdAt: string;
-  _count?: { visits: number; nutritionPlans: number; exercisePlans: number };
-}
+import { usePatientsList } from '@/features/patients/hooks/use-patients-list';
+import type { Patient } from '@/types';
 
 const goalLabels: Record<string, string> = {
   lose_weight: 'فقدان الوزن',
@@ -71,43 +57,21 @@ const genderLabels: Record<string, string> = {
 export default function PatientsPage() {
   const { token } = useAuthStore();
   const searchParams = useSearchParams();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [filterGender, setFilterGender] = useState<string>('all');
   const [filterGoal, setFilterGoal] = useState<string>('all');
   const [filterActivity, setFilterActivity] = useState<string>('all');
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
 
-  const fetchPatients = useCallback(async () => {
-    if (!token) return;
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (searchQuery) params.set('search', searchQuery);
-      params.set('limit', '50');
-
-      const res = await fetch(`/api/patients?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setPatients(data.patients || []);
-      }
-    } catch (error) {
-      console.error('Error fetching patients:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, searchQuery]);
+  const { patients, loading } = usePatientsList(token, { search: debouncedSearch, limit: 50 });
 
   useEffect(() => {
-    const timer = setTimeout(fetchPatients, 300);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
     return () => clearTimeout(timer);
-  }, [fetchPatients]);
+  }, [searchQuery]);
 
   const filteredPatients = useMemo(() => {
-    return patients.filter((p) => {
+    return patients.filter((p: Patient) => {
       if (filterGender !== 'all' && p.gender !== filterGender) return false;
       if (filterGoal !== 'all' && p.goal !== filterGoal) return false;
       if (filterActivity !== 'all' && p.activityLevel !== filterActivity) return false;

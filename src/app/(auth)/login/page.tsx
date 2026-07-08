@@ -7,6 +7,8 @@ import { Eye, EyeOff, LogIn, Loader2, AlertCircle, Mail, Lock, ShieldAlert } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { login } from '@/features/auth/services/auth.api';
+import { isApiError } from '@/lib/api-error';
 import { useAuthStore } from '@/lib/auth-store';
 
 interface FormErrors {
@@ -63,35 +65,28 @@ export default function LoginPage() {
     setNeedsActivation(false);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email.trim(),
-          password: formData.password,
-        }),
+      const data = await login({
+        email: formData.email.trim(),
+        password: formData.password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (data.needsEmailVerification) {
+      setAuth(data.token, data.user);
+      router.push('/dashboard');
+    } catch (err) {
+      if (isApiError(err)) {
+        const data = err.data as { needsEmailVerification?: boolean; needsActivation?: boolean } | null;
+        if (data?.needsEmailVerification) {
           localStorage.setItem('nutriclinic-pending-email', formData.email.trim());
           router.push(`/verify-email?email=${encodeURIComponent(formData.email.trim())}`);
           return;
         }
-        if (data.needsActivation) {
+        if (data?.needsActivation) {
           setNeedsActivation(true);
           localStorage.setItem('nutriclinic-pending-email', formData.email.trim());
         }
-        setApiError(data.error || 'حدث خطأ أثناء تسجيل الدخول');
+        setApiError(err.message || 'حدث خطأ أثناء تسجيل الدخول');
         return;
       }
-
-      // Login successful — store auth data
-      setAuth(data.token, data.user);
-      router.push('/dashboard');
-    } catch {
       setApiError('تعذر الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
     } finally {
       setIsLoading(false);

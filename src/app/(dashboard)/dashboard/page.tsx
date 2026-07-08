@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuthStore } from '@/lib/auth-store';
+import { useDashboard } from '@/features/patients/hooks/use-dashboard';
+import type { Patient, Conversation } from '@/types';
 import {
   BarChart,
   Bar,
@@ -28,24 +30,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-
-interface Patient {
-  id: string;
-  name: string;
-  age?: number;
-  gender?: string;
-  goal?: string;
-  weight?: number;
-  createdAt: string;
-  _count?: { visits: number; nutritionPlans: number };
-}
-
-interface Conversation {
-  id: string;
-  title?: string;
-  updatedAt: string;
-  _count?: { messages: number };
-}
 
 const goalLabels: Record<string, string> = {
   lose_weight: 'فقدان الوزن',
@@ -69,64 +53,7 @@ const itemVariants = {
 
 export default function DashboardPage() {
   const { token, user } = useAuthStore();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [stats, setStats] = useState({
-    totalPatients: 0,
-    activePlans: 0,
-    thisWeekVisits: 0,
-    aiConversations: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [chartData, setChartData] = useState<Array<{ name: string; visits: number; plans: number }>>([]);
-
-  useEffect(() => {
-    async function fetchData() {
-      if (!token) return;
-      try {
-        const headers = { Authorization: `Bearer ${token}` };
-
-        const [patientsRes, conversationsRes, statsRes] = await Promise.all([
-          fetch('/api/patients?limit=5', { headers }),
-          fetch('/api/ai/conversations', { headers }),
-          fetch('/api/dashboard/stats', { headers }),
-        ]);
-
-        if (patientsRes.ok) {
-          const data = await patientsRes.json();
-          setPatients(data.patients || []);
-          setStats((prev) => ({
-            ...prev,
-            totalPatients: data.pagination?.total || data.patients?.length || 0,
-          }));
-        }
-
-        if (conversationsRes.ok) {
-          const data = await conversationsRes.json();
-          setConversations(data.conversations || []);
-          setStats((prev) => ({
-            ...prev,
-            aiConversations: data.conversations?.length || 0,
-          }));
-        }
-
-        if (statsRes.ok) {
-          const data = await statsRes.json();
-          setStats((prev) => ({
-            ...prev,
-            activePlans: data.stats?.activePlans || 0,
-            thisWeekVisits: data.stats?.thisWeekVisits || 0,
-          }));
-          setChartData(data.chartData || []);
-        }
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [token]);
+  const { patients, conversations, stats, chartData, loading } = useDashboard(token);
 
   const statCards = [
     {

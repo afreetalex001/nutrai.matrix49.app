@@ -1,15 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff, UserPlus, Loader2, AlertCircle, Phone, Mail, User, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuthStore } from '@/lib/auth-store';
 import { PasswordStrength } from '@/components/password-strength';
 import { TurnstileWidget } from '@/components/turnstile-widget';
+import { useRegister } from '@/features/auth/hooks/use-register';
 
 interface FormErrors {
   name?: string;
@@ -20,8 +19,7 @@ interface FormErrors {
 }
 
 export default function RegisterPage() {
-  const router = useRouter();
-  const setAuth = useAuthStore((s) => s.setAuth);
+  const { submit: register, loading: isLoading, error: apiError, setError: setApiError } = useRegister();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -33,8 +31,6 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [apiError, setApiError] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
 
   const validate = (): boolean => {
@@ -90,36 +86,13 @@ export default function RegisterPage() {
     e.preventDefault();
     if (!validate()) return;
 
-    setIsLoading(true);
-    setApiError('');
-
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          email: formData.email.trim(),
-          password: formData.password,
-          phone: formData.phone.trim() || undefined,
-          turnstileToken,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setApiError(data.error || 'حدث خطأ أثناء التسجيل');
-        return;
-      }
-
-      localStorage.setItem('nutriclinic-pending-email', formData.email.trim());
-      router.push(`/verify-email?email=${encodeURIComponent(formData.email.trim())}`);
-    } catch {
-      setApiError('تعذر الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
-    } finally {
-      setIsLoading(false);
-    }
+    await register({
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      password: formData.password,
+      phone: formData.phone.trim() || undefined,
+      turnstileToken,
+    });
   };
 
   const fieldVariants = {
