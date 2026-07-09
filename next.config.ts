@@ -28,6 +28,13 @@ const nextConfig: NextConfig = {
 
   // تعطيل telemetry لإرسال بيانات أقل
   logging: false,
+
+  // تقليل استخدام العمليات والـ threads على cPanel/CloudLinux
+  // لتجنب EAGAIN / ERR_WORKER_INIT_FAILED
+  experimental: {
+    workerThreads: false,
+    cpus: 1,
+  },
 };
 
 export default nextConfig;
