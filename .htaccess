@@ -1,22 +1,22 @@
 # ============================================================
 # NutriClinic SaaS - Apache Rewrite Rules
-# إعادة توجيه كل الطلبات إلى تطبيق Node.js على المنفذ الداخلي
-# ============================================================
-# هذا الملف يستخدم مع إعداد cPanel Proxy أو当你 لا تستخدم
-# Phusion Passenger مباشرة. ضعه في مجلد public_html أو مجلد
-# التطبيق.
+# إعادة توجيه الطلبات إلى تطبيق Node.js على المنفذ الداخلي
 # ============================================================
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # السماح بالوصول المباشر للملفات الثابتة
+    # تقديم ملفات Next.js الثابتة مباشرة من .next/static
+    # (لتجنب مشاكل عدم العثور على الملفات عند الـ proxy)
+    RewriteRule ^_next/static/(.*)$ .next/static/$1 [L]
+
+    # السماح بالوصول المباشر للملفات الثابتة الموجودة
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
     # إعادة توجيه كل الطلبات الأخرى إلى تطبيق Node.js
-    # استبدل PORT بالمنفذ الفعلي لتطبيقك في cPanel
+    # استبدل PORT بالمنفذ الفعلي لتطبيقك في cPanel (افتراضي 3000)
     RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
@@ -26,10 +26,9 @@
 # تمرير headers مهمة إلى تطبيق Node.js
 <IfModule mod_headers.c>
     RequestHeader set X-Forwarded-Proto "https"
-    RequestHeader set X-Forwarded-Host "%{HTTP_HOST}e" env=HTTP_HOST
 </IfModule>
 
-# مهلة ط_extendedة لطلبات AI التي قد تستغرق وقتًا أطول
+# مهلة طويلة لطلبات AI التي قد تستغرق وقتًا أطول
 <IfModule mod_proxy.c>
     ProxyTimeout 300
 </IfModule>
