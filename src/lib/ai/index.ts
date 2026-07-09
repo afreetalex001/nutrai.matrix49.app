@@ -913,40 +913,119 @@ export async function generateNutritionPlan(
   },
   userId: string
 ): Promise<StructuredNutritionPlan> {
-  const seed = variationSeed(`nutrition-${patientData.name}`);
-  const strategy = await generateNutritionStrategy(patientData, userId);
+  const inBodyLines = [];
+  if (patientData.inBodyData) {
+    if (patientData.inBodyData.bodyFat !== undefined && patientData.inBodyData.bodyFat !== null) inBodyLines.push(`نسبة الدهون: ${patientData.inBodyData.bodyFat}%`);
+    if (patientData.inBodyData.muscleMass !== undefined && patientData.inBodyData.muscleMass !== null) inBodyLines.push(`الكتلة العضلية: ${patientData.inBodyData.muscleMass} كجم`);
+    if (patientData.inBodyData.waterPercentage !== undefined && patientData.inBodyData.waterPercentage !== null) inBodyLines.push(`نسبة الماء: ${patientData.inBodyData.waterPercentage}%`);
+  }
 
-  // توليد على دفعتين بفاصل زمني صغير (لتجنب rate limit مع تسريع الاستجابة)
-  const batch1 = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء'];
-  const batch2 = ['الأربعاء', 'الخميس', 'الجمعة'];
+  // --- Stage 1: Free Text Generation (High Quality Thinking) ---
+  const systemPromptStage1 = `أنت أخصائي تغذية علاجي خبير. بناءً على بيانات المريض، قم بكتابة خطة غذائية أسبوعية كاملة (7 أيام) في صيغة نصية (Markdown).
+هذه المرحلة مخصصة للإبداع واختيار أفضل الأطعمة وتوزيع الوجبات باحترافية كما تفعل في الاستشارات المباشرة.
 
-  const days1 = await generateNutritionDays(patientData, batch1, userId, strategy, seed);
-  // انتظر ثانية واحدة قبل الدفعة الثانية لتجنب rate limit
-  await new Promise(r => setTimeout(r, 1000));
-  const days2 = await generateNutritionDays(patientData, batch2, userId, strategy, seed);
+قواعد الخطة:
+1. اذكر 7 أيام بوضوح (من السبت إلى الجمعة).
+2. لكل يوم، اكتب 5 وجبات (الفطور، سناك صباحي، الغداء، سناك مسائي، العشاء).
+3. لكل وجبة، اكتب الأصناف مقترنة بالكمية التقريبية بالجرامات ومقدار السعرات والماكروز (بروتين، كارب، دهون) التقريبي.
+4. يجب أن يكون الإجمالي اليومي قريباً جداً من أهداف المريض: ${patientData.caloriesTarget} سعرة، ${patientData.proteinTarget}غ بروتين، ${patientData.carbsTarget}غ كارب، ${patientData.fatsTarget}غ دهون.
+5. نوّع في الخيارات ووزع البروتين جيداً على مدار اليوم.
+6. استخدم أطعمة حقيقية وقابلة للتنفيذ في البيئة العربية.
+${patientData.medicalNotes ? `7. راعي الملاحظات الطبية: ${patientData.medicalNotes}` : ''}
+${patientData.doctorNotes ? `8. ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
+${patientData.allergies ? `9. تجنب/ممنوعات: ${patientData.allergies}` : ''}
+${inBodyLines.length > 0 ? `10. بيانات InBody: ${inBodyLines.join('، ')}` : ''}
 
-  const allDays = [...days1, ...days2];
+اكتب الخطة بوضوح واحترافية.`;
+
+  const userPromptStage1 = `بيانات المريض:
+- الاسم: ${patientData.name}، ${patientData.age} سنة، ${patientData.gender}
+- الوزن: ${patientData.weight} كجم، الطول: ${patientData.height} سم${patientData.bmi ? `، BMI: ${Math.round(patientData.bmi * 10) / 10}` : ''}
+- النشاط: ${patientData.activityLevel}
+- الهدف: ${patientData.goal}`;
+
+  const stage1Response = await chatWithAutoContinue(
+    [
+      { role: 'system', content: systemPromptStage1 },
+      { role: 'user', content: userPromptStage1 },
+    ],
+    userId,
+    'nutrition_plan',
+    { maxOutputTokens: 8192, temperature: 0.65, executionMode: 'sequential', timeoutMs: 70000 },
+    2
+  );
+
+  const markdownPlan = stage1Response.content;
+
+  // --- Stage 2: JSON Extraction ---
+  const systemPromptStage2 = `أنت أداة لاستخراج البيانات. قم بتحويل الخطة الغذائية النصية التالية إلى صيغة JSON صالحة فقط بناءً على هذه الهيكلة بالضبط:
+
+{
+  "weekDays": [
+    {
+      "dayName": "السبت",
+      "meals": [
+        {
+          "type": "breakfast",
+          "name": "الفطور",
+          "time": "08:00",
+          "items": [
+            { "name": "بياض بيض", "grams": 100, "calories": 52, "protein": 11, "carbs": 0.7, "fats": 0.2 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+قواعد الاستخراج:
+1. يجب أن يكون هناك بالضبط 7 أيام.
+2. يجب أن تحتوي كل وجبة على الأصناف المستخرجة من النص مع الأرقام بدقة (grams, calories, protein, carbs, fats).
+3. اجعل types الوجبات كالتالي: breakfast, snack1, lunch, snack2, dinner.
+4. إرجاع JSON صالح فقط، بدون أي نصوص قبله أو بعده.`;
+
+  const userPromptStage2 = `استخرج JSON من هذه الخطة:
+
+${markdownPlan}`;
+
+  const stage2Response = await chatWithAutoContinue(
+    [
+      { role: 'system', content: systemPromptStage2 },
+      { role: 'user', content: userPromptStage2 },
+    ],
+    userId,
+    'nutrition_plan',
+    { maxOutputTokens: 8192, temperature: 0.1, jsonMode: true, executionMode: 'sequential', timeoutMs: 70000 },
+    1
+  );
+
+  const cleaned = extractJson(stage2Response.content);
+  let parsed: StructuredNutritionPlan;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (e) {
+    console.error('Failed to parse nutrition plan JSON. Sample:', cleaned.substring(0, 500));
+    throw new Error('فشل تحويل خطة التغذية من AI إلى صيغة منظمة. يرجى المحاولة مرة أخرى.');
+  }
 
   // ضمان IDs
-  for (const day of allDays) {
-    for (const meal of day.meals || []) {
-      if (!meal.id) meal.id = shortId();
-      for (const item of meal.items || []) {
-        item.calories = Math.round(item.calories || 0);
-        item.protein = Math.round((item.protein || 0) * 10) / 10;
-        item.carbs = Math.round((item.carbs || 0) * 10) / 10;
-        item.fats = Math.round((item.fats || 0) * 10) / 10;
+  if (parsed.weekDays && Array.isArray(parsed.weekDays)) {
+    for (const day of parsed.weekDays) {
+      for (const meal of day.meals || []) {
+        if (!meal.id) meal.id = shortId();
+        for (const item of meal.items || []) {
+          item.calories = Math.round(item.calories || 0);
+          item.protein = Math.round((item.protein || 0) * 10) / 10;
+          item.carbs = Math.round((item.carbs || 0) * 10) / 10;
+          item.fats = Math.round((item.fats || 0) * 10) / 10;
+        }
       }
     }
   }
 
-  const issues = validateNutritionDays(allDays, { calories: patientData.caloriesTarget, protein: patientData.proteinTarget });
-  if (issues.length) {
-    console.warn('[AI Nutrition Validation]', issues.join(' | '));
-  }
-
   return {
-    weekDays: allDays,
+    weekDays: parsed.weekDays || [],
+    notes: parsed.notes,
     dailyTargets: {
       calories: patientData.caloriesTarget,
       protein: patientData.proteinTarget,
@@ -1071,97 +1150,102 @@ export async function generateExercisePlan(
 ): Promise<StructuredExercisePlan> {
   const inBodyLines = [];
   if (patientData.inBodyData) {
-    if (patientData.inBodyData.bodyFat !== undefined && patientData.inBodyData.bodyFat !== null) {
-      inBodyLines.push(`نسبة الدهون: ${patientData.inBodyData.bodyFat}%`);
-    }
-    if (patientData.inBodyData.muscleMass !== undefined && patientData.inBodyData.muscleMass !== null) {
-      inBodyLines.push(`الكتلة العضلية: ${patientData.inBodyData.muscleMass} كجم`);
-    }
-    if (patientData.inBodyData.waterPercentage !== undefined && patientData.inBodyData.waterPercentage !== null) {
-      inBodyLines.push(`نسبة الماء: ${patientData.inBodyData.waterPercentage}%`);
-    }
+    if (patientData.inBodyData.bodyFat !== undefined && patientData.inBodyData.bodyFat !== null) inBodyLines.push(`نسبة الدهون: ${patientData.inBodyData.bodyFat}%`);
+    if (patientData.inBodyData.muscleMass !== undefined && patientData.inBodyData.muscleMass !== null) inBodyLines.push(`الكتلة العضلية: ${patientData.inBodyData.muscleMass} كجم`);
+    if (patientData.inBodyData.waterPercentage !== undefined && patientData.inBodyData.waterPercentage !== null) inBodyLines.push(`نسبة الماء: ${patientData.inBodyData.waterPercentage}%`);
   }
 
-  const seed = variationSeed(`exercise-${patientData.name}`);
-  const strategy = await generateExerciseStrategy(patientData, userId, seed);
+  // --- Stage 1: Free Text Generation (High Quality Thinking) ---
+  const systemPromptStage1 = `أنت مدرب رياضي عربي محترف. بناءً على بيانات المريض، قم بكتابة خطة تمارين أسبوعية كاملة (7 أيام) في صيغة نصية (Markdown).
+هذه المرحلة مخصصة لإنشاء خطة احترافية واقعية تصف الأيام، أيام الراحة، وتفاصيل التمارين كأنك تكتبها في استشارة مباشرة.
 
-  const systemPrompt = `أنت مدرب رياضي عربي معتمد. حوّل الاستراتيجية التالية إلى خطة تمارين أسبوعية بصيغة JSON صالحة فقط (بدون markdown).
+قواعد الخطة:
+1. اذكر 7 أيام بوضوح (من السبت إلى الجمعة).
+2. حدد أيام التمرين وأيام الراحة بناءً على مستوى المريض (مبتدئ: 3-4 أيام تمرين، متوسط/متقدم: 4-6 أيام).
+3. لكل يوم تمرين، حدد التركيز (مثال: Push, Pull, Legs, Full Body, Upper...).
+4. اذكر التمارين لكل يوم تمرين بوضوح، مع ذكر: اسم التمرين، المجاميع (Sets)، التكرارات (Reps)، وقت الراحة بالثواني، وأي ملاحظات فنية للأداء.
+5. ركز على هدف المريض وأمان مفاصله وقلبه.
+${patientData.medicalNotes ? `6. راعي الملاحظات الطبية: ${patientData.medicalNotes}` : ''}
+${patientData.doctorNotes ? `7. ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
+${inBodyLines.length > 0 ? `8. بيانات InBody: ${inBodyLines.join('، ')}` : ''}
 
-استراتيجية الخطة:
-${strategy}
+اكتب الخطة بوضوح، أضف إرشادات الإحماء (Warmup) والإطالات (Cooldown) وملاحظات عامة.`;
 
-Variation Seed: ${seed}
+  const userPromptStage1 = `بيانات المتدرب:
+- الاسم: ${patientData.name}، ${patientData.age} سنة، ${patientData.gender}
+- الوزن: ${patientData.weight} كجم، الطول: ${patientData.height ? patientData.height + ' سم' : 'غير محدد'}${patientData.bmi ? `، BMI: ${Math.round(patientData.bmi * 10) / 10}` : ''}
+- النشاط: ${patientData.activityLevel}
+- الهدف: ${patientData.goal}`;
 
-مهم: لا تستخدم تمارين أو تقسيمات ثابتة لمجرد أنها في المثال. اختر تمارين مناسبة فعلاً لحالة المريض وغيّر النسخة حسب الـ Variation Seed.
+  const stage1Response = await chatWithAutoContinue(
+    [
+      { role: 'system', content: systemPromptStage1 },
+      { role: 'user', content: userPromptStage1 },
+    ],
+    userId,
+    'exercise_plan',
+    { maxOutputTokens: 8192, temperature: 0.65, executionMode: 'sequential', timeoutMs: 70000 },
+    2
+  );
 
-البنية المطلوبة:
+  const markdownPlan = stage1Response.content;
+
+  // --- Stage 2: JSON Extraction ---
+  const systemPromptStage2 = `أنت أداة لاستخراج البيانات. قم بتحويل خطة التمارين النصية التالية إلى صيغة JSON صالحة فقط بناءً على هذه الهيكلة بالضبط:
+
 {
   "weekDays": [
     {
       "dayName": "السبت",
       "isRest": false,
-      "focus": "تركيز اليوم المناسب حسب الاستراتيجية",
+      "focus": "التركيز (مثال: Push أو كارديو)",
       "exercises": [
-        { "name": "اسم تمرين مناسب للمريض", "sets": 3, "reps": "8-12", "restSeconds": 60, "notes": "تعليمات الأداء والسلامة" }
+        { "name": "اسم التمرين", "sets": 3, "reps": "8-12", "restSeconds": 60, "notes": "ملاحظات الأداء" }
       ]
+    },
+    {
+      "dayName": "الأحد",
+      "isRest": true,
+      "focus": "راحة",
+      "exercises": []
     }
   ],
-  "warmup": "5-10 دقائق كارديو خفيف + تمارين حركية",
-  "cooldown": "5 دقائق ستريتش",
+  "warmup": "وصف الإحماء",
+  "cooldown": "وصف الإطالات",
   "notes": "ملاحظات عامة"
 }
 
-قواعد صارمة:
-1. **بالضبط 7 أيام** (السبت، الأحد، الإثنين، الثلاثاء، الأربعاء، الخميس، الجمعة)
-2. عدد أيام التدريب يجب أن يتبع الاستراتيجية: مبتدئ غالباً 3-4 أيام، متوسط 4-5، متقدم 5-6، مع 1-3 أيام راحة حسب الحالة.
-3. كل يوم تدريب 3-7 تمارين حسب المستوى والمدة، ولا تكرر نفس التمرين أكثر من مرتين بالأسبوع.
-4. ركّز على هدف المريض: ${patientData.goal} مع أمان المفاصل والقلب.
-5. كل تمرين: name، sets، reps، restSeconds، notes، ويمكن إضافة rpe إن أمكن داخل notes.
-6. اختر التقسيم الأنسب من الاستراتيجية ولا تستخدم Push/Pull/Legs دائماً.
-7. إذا BMI مرتفع أو توجد ملاحظات طبية، تجنب القفز والجري عالي الصدمة والتحميل الخطير.
-${patientData.medicalNotes ? `7. راعي الملاحظات الطبية: ${patientData.medicalNotes}` : ''}
-${patientData.doctorNotes ? `8. ملاحظات الطبيب: ${patientData.doctorNotes}` : ''}
-${inBodyLines.length > 0 ? `9. بيانات InBody: ${inBodyLines.join('، ')}` : ''}
-${patientData.labReports ? `10. تحاليل مخبرية: ${patientData.labReports}` : ''}
-${patientData.aiSummary ? `11. ملخص المريض: ${patientData.aiSummary}` : ''}
-${patientData.allergies ? `12. حساسيات: ${patientData.allergies}` : ''}
+قواعد الاستخراج:
+1. بالضبط 7 أيام.
+2. إذا كان اليوم يوم راحة، اجعل isRest = true و exercises مصفوفة فارغة [].
+3. استخرج التمارين بدقة من النص إن وجدت.
+4. إرجاع JSON صالح فقط.`;
 
-أرجع JSON صالحاً فقط.`
+  const userPromptStage2 = `استخرج JSON من هذه الخطة:
 
-  const userPrompt = `بيانات المريض:
-- الاسم: ${patientData.name}
-- العمر: ${patientData.age}، الجنس: ${patientData.gender}
-- الطول: ${patientData.height ? patientData.height + ' سم' : 'غير محدد'}
-- الوزن: ${patientData.weight}كجم
-${patientData.bmi ? `- BMI: ${Math.round(patientData.bmi * 10) / 10}` : ''}
-- مستوى النشاط: ${patientData.activityLevel}
-- الهدف: ${patientData.goal}`;
+${markdownPlan}`;
 
-  const response = await chatWithAutoContinue(
+  const stage2Response = await chatWithAutoContinue(
     [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
+      { role: 'system', content: systemPromptStage2 },
+      { role: 'user', content: userPromptStage2 },
     ],
     userId,
     'exercise_plan',
-    { maxOutputTokens: 8192, temperature: 0.65, jsonMode: true, executionMode: 'sequential', timeoutMs: 70000 },
-    2
+    { maxOutputTokens: 8192, temperature: 0.1, jsonMode: true, executionMode: 'sequential', timeoutMs: 70000 },
+    1
   );
 
-  const cleaned = extractJson(response.content);
+  const cleaned = extractJson(stage2Response.content);
   let parsed: StructuredExercisePlan;
   try {
     parsed = JSON.parse(cleaned);
   } catch (e) {
     console.error('Failed to parse exercise plan JSON. Sample:', cleaned.substring(0, 500));
-    throw new Error(`فشل تحويل خطة التمارين من AI إلى صيغة منظمة. حاول مرة أخرى.`);
+    throw new Error('فشل تحويل خطة التمارين من AI إلى صيغة منظمة. يرجى المحاولة مرة أخرى.');
   }
 
-  const exerciseIssues = validateExercisePlan(parsed);
-  if (exerciseIssues.length) {
-    console.warn('[AI Exercise Validation]', exerciseIssues.join(' | '));
-  }
-
+  // ضمان IDs للتمارين
   if (parsed.weekDays && Array.isArray(parsed.weekDays)) {
     for (const day of parsed.weekDays) {
       if (!day.isRest && day.exercises) {
