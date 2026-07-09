@@ -970,7 +970,8 @@ ${inBodyLines.length > 0 ? `10. بيانات InBody: ${inBodyLines.join('، ')}`
           "name": "الفطور",
           "time": "08:00",
           "items": [
-            { "name": "بياض بيض", "grams": 100, "calories": 52, "protein": 11, "carbs": 0.7, "fats": 0.2 }
+            { "name": "بياض بيض", "grams": 100, "calories": 52, "protein": 11, "carbs": 0.7, "fats": 0.2 },
+            { "name": "خبز أسمر", "grams": 50, "calories": 130, "protein": 4, "carbs": 25, "fats": 1.5 }
           ]
         }
       ]
@@ -980,9 +981,10 @@ ${inBodyLines.length > 0 ? `10. بيانات InBody: ${inBodyLines.join('، ')}`
 
 قواعد الاستخراج:
 1. يجب أن يكون هناك بالضبط 7 أيام.
-2. يجب أن تحتوي كل وجبة على الأصناف المستخرجة من النص مع الأرقام بدقة (grams, calories, protein, carbs, fats).
-3. اجعل types الوجبات كالتالي: breakfast, snack1, lunch, snack2, dinner.
-4. إرجاع JSON صالح فقط، بدون أي نصوص قبله أو بعده.`;
+2. ⚠️ تحذير هام جداً: يجب فصل كل صنف طعام كعنصر مستقل في مصفوفة (items). ممنوع دمج الأصناف في عنصر واحد (مثل "100 جرام فول + بيضة + خبز")! كل مكون (فول، بيض، خبز) يجب أن يكون له item خاص به ليسهل على الطبيب تعديله.
+3. استخرج الأرقام بدقة (grams, calories, protein, carbs, fats).
+4. اجعل types الوجبات كالتالي: breakfast, snack1, lunch, snack2, dinner.
+5. إرجاع JSON صالح فقط، بدون أي نصوص قبله أو بعده.`;
 
   const userPromptStage2 = `استخرج JSON من هذه الخطة:
 
