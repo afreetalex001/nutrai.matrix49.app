@@ -72,7 +72,7 @@ mini-services/
 Caddyfile
 
 # DB (local SQLite)
-db/
+/db/
 download/
 
 # Agent context
