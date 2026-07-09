@@ -1,26 +1,25 @@
 # ============================================================
-# NutriClinic SaaS - Apache Rewrite Rules
-# إعادة توجيه الطلبات إلى تطبيق Node.js على المنفذ الداخلي
+# NutriClinic SaaS - Apache Rewrite Rules for cPanel Passenger
+# يعمل مع CloudLinux/Phusion Passenger بدون حاجة لـ proxy يدوي
+# ============================================================
+# ملاحظة: cPanel يضيف تلقائياً إعدادات Passenger في أعلى الملف.
+# لا تُزِل تلك الإعدادات. هذا الملف يضيف قاعدة إعادة كتابة للملفات
+# الثابتة فقط.
 # ============================================================
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
     # تقديم ملفات Next.js الثابتة مباشرة من .next/static
-    # (لتجنب مشاكل عدم العثور على الملفات عند الـ proxy)
+    # (Passenger لا يري هذه الملفات تلقائياً، لأنها خارج public/)
+    RewriteCond %{REQUEST_URI} ^/_next/static/(.*)$
+    RewriteCond %{DOCUMENT_ROOT}/.next/static/%1 -f
     RewriteRule ^_next/static/(.*)$ .next/static/$1 [L]
 
-    # السماح بالوصول المباشر للملفات الثابتة الموجودة
+    # السماح بالوصول المباشر للملفات الموجودة في public/
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
-
-    # إعادة توجيه كل الطلبات الأخرى إلى تطبيق Node.js
-    # استبدل PORT بالمنفذ الفعلي لتطبيقك في cPanel (افتراضي 3000)
-    RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
 </IfModule>
 
 # تمرير headers مهمة إلى تطبيق Node.js
