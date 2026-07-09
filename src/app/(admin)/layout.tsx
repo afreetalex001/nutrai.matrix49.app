@@ -9,6 +9,7 @@ import {
   Cpu,
   CreditCard,
   FileText,
+  UtensilsCrossed,
   Shield,
   ArrowRight,
   LogOut,
@@ -55,6 +56,7 @@ const adminNavItems = [
   { title: 'الأمان والمدراء', href: '/admin/security', icon: KeyRound },
   { title: 'الاشتراكات', href: '/admin/subscriptions', icon: CreditCard },
   { title: 'إدارة المحتوى', href: '/admin/cms', icon: FileText },
+  { title: 'قوائم الطعام', href: '/admin/foods', icon: UtensilsCrossed },
   { title: 'إعدادات الصفحة الرئيسية', href: '/admin/landing', icon: Paintbrush },
 ];
 

@@ -8,6 +8,7 @@ import {
   Users,
   Bot,
   ClipboardList,
+  UtensilsCrossed,
   Settings,
   Search,
   LogOut,
@@ -49,6 +50,7 @@ const navItems = [
   { title: 'المرضى', href: '/patients', icon: Users },
   { title: 'المساعد الذكي', href: '/ai-assistant', icon: Bot },
   { title: 'الخطط', href: '/plans', icon: ClipboardList },
+  { title: 'قوائم الطعام', href: '/foods', icon: UtensilsCrossed },
   { title: 'الإعدادات', href: '/settings', icon: Settings },
 ];
 
