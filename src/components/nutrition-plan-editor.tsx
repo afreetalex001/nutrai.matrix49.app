@@ -117,6 +117,13 @@ export function NutritionPlanEditor({ token, plan, initialStructured, onSaved, o
   const [addFoodDialog, setAddFoodDialog] = useState<{ open: boolean; dayIdx: number; mealIdx: number }>({ open: false, dayIdx: 0, mealIdx: 0 });
   const [foodSearch, setFoodSearch] = useState('');
   const [foodCategory, setFoodCategory] = useState('');
+
+  // استخراج الأقسام ديناميكياً من الأطعمة الموجودة
+  const dynamicCategories = useMemo(() => {
+    const cats = new Set(foods.map(f => f.category).filter(Boolean));
+    return Array.from(cats).sort();
+  }, [foods]);
+
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
   const [grams, setGrams] = useState(100);
 
@@ -531,8 +538,8 @@ export function NutritionPlanEditor({ token, plan, initialStructured, onSaved, o
                                 className="h-9 px-2 rounded-md border text-sm bg-background"
                               >
                                 <option value="">كل الأقسام</option>
-                                {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                                  <option key={k} value={k}>{v}</option>
+                                {dynamicCategories.map((cat) => (
+                                  <option key={cat} value={cat}>{CATEGORY_LABELS[cat] || cat}</option>
                                 ))}
                               </select>
                             </div>
