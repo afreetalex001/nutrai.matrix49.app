@@ -15,8 +15,6 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const listName = formData.get('listName') as string;
-    // We don't have listName in schema so we'll store it in 'notes' as "[ListName] - notes" or similar if we want.
-    // Or we just add them normally. Let's just use it as a category prefix or in notes.
 
     if (!file) {
       return Response.json({ error: 'لم يتم العثور على ملف' }, { status: 400 });
@@ -31,8 +29,18 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'الملف فارغ أو غير صالح' }, { status: 400 });
     }
 
+    // Get existing foods to avoid duplicates
+    const allExisting = await db.foodItem.findMany({
+      where: user.role === 'admin' ? {} : {
+        OR: [{ isCustom: false }, { createdById: user.id }]
+      },
+      select: { nameAr: true }
+    });
+    const existingNames = new Set(allExisting.map(f => String(f.nameAr).trim().toLowerCase()));
+
     const foodsToInsert: any[] = [];
     let errors = 0;
+    let mergedCount = 0;
 
     for (const row of data as any[]) {
       const nameAr = row['nameAr'] || row['الاسم بالعربي'];
@@ -48,9 +56,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (nameAr && !isNaN(cals)) {
+        const cleanName = String(nameAr).trim();
+        if (existingNames.has(cleanName.toLowerCase())) {
+          mergedCount++;
+          continue;
+        }
+
         foodsToInsert.push({
           id: generateShortId(),
-          nameAr: String(nameAr).trim(),
+          nameAr: cleanName,
           nameEn: row['nameEn'] ? String(row['nameEn']).trim() : null,
           category: String(category).trim(),
           caloriesPer100: cals,
@@ -58,26 +72,30 @@ export async function POST(request: NextRequest) {
           carbsPer100: carbs,
           fatsPer100: fats,
           notes: notes,
-          isCustom: user.role !== 'admin', // If admin, it's global. If doctor, it's custom.
+          isCustom: user.role !== 'admin',
           createdById: user.role !== 'admin' ? user.id : null,
           isActive: true
         });
+        existingNames.add(cleanName.toLowerCase());
       } else {
         errors++;
       }
     }
 
-    if (foodsToInsert.length === 0) {
-      return Response.json({ error: 'لم يتم العثور على أصناف صالحة في الملف. تأكد من وجود الأعمدة المطلوبة (nameAr, caloriesPer100)' }, { status: 400 });
+    if (foodsToInsert.length > 0) {
+      await db.foodItem.createMany({
+        data: foodsToInsert
+      });
     }
 
-    await db.foodItem.createMany({
-      data: foodsToInsert
-    });
+    let msg = `تم إضافة ${foodsToInsert.length} صنف جديد بنجاح.`;
+    if (mergedCount > 0) msg += ` (تم دمج/تخطي ${mergedCount} صنف مكرر).`;
+    if (errors > 0) msg += ` (تجاهل ${errors} أسطر فارغة).`;
 
     return Response.json({ 
-      message: `تم إضافة ${foodsToInsert.length} صنف بنجاح` + (errors > 0 ? ` وتم تجاهل ${errors} أسطر غير صالحة.` : ''),
-      count: foodsToInsert.length
+      message: msg,
+      count: foodsToInsert.length,
+      merged: mergedCount
     }, { status: 201 });
   } catch (error) {
     console.error('Error importing foods:', error);
